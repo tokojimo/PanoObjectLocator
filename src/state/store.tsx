@@ -9,6 +9,7 @@ export type SourceState = {
   boxesHandle?: FileSystemFileHandle;
   metadataHandle?: FileSystemFileHandle;
   projectHandle?: FileSystemFileHandle;
+  projectDelimiter?: string;
 };
 
 export type UIState = {
@@ -41,7 +42,11 @@ export type AppAction =
       payload: {
         panos: Pano[];
         detections: Detection[];
-        project?: { observationsByObjectId: Record<string, Observation[]>; objectsById: ProjectObjectsState };
+        project?: {
+          observationsByObjectId: Record<string, Observation[]>;
+          objectsById: ProjectObjectsState;
+          delimiter?: string;
+        };
       };
     }
   | { type: 'setActiveObject'; payload?: string }

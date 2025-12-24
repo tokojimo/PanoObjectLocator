@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { loadBoxes, loadMetadata, loadProject } from '../data/projectIO';
+import { detectDelimiter } from '../data/csv';
 import { BOX_COLUMNS, META_ALIASES, META_COLUMNS, PROJECT_COLUMNS, validateColumns } from '../data/schema';
 import { useStore } from '../state/store';
 import { ValidationError } from '../utils/errors';
@@ -91,7 +92,8 @@ export default function SourcePicker() {
     const file = handle instanceof File ? handle : await handle.getFile();
     const text = await file.text();
     const [headerLine] = text.split(/\r?\n/);
-    const missing = validateColumns(headerLine.split(','), expected, aliases);
+    const delimiter = detectDelimiter(headerLine);
+    const missing = validateColumns(headerLine.split(delimiter), expected, aliases);
     if (missing.length) throw new ValidationError(`Colonnes manquantes: ${missing.join(', ')}`);
   };
 
@@ -118,6 +120,13 @@ export default function SourcePicker() {
         loadMetadata(meta, state.sources.imageDirectory),
         project ? loadProject(project) : Promise.resolve(undefined),
       ]);
+
+      if (projectData) {
+        dispatch({
+          type: 'setSources',
+          payload: { projectDelimiter: projectData.delimiter, projectHandle: project as any },
+        });
+      }
 
       dispatch({
         type: 'setData',
