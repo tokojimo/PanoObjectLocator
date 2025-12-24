@@ -3,6 +3,7 @@ import MapView from '../components/MapView';
 import PanoDock from '../components/PanoDock';
 import ObjectPanel from '../components/ObjectPanel';
 import SaveStatus from '../components/SaveStatus';
+import TodoList from '../components/TodoList';
 import { StoreProvider } from '../state/store';
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
           <div className="panel">
             <SourcePicker />
             <ObjectPanel />
+            <TodoList />
             <SaveStatus />
           </div>
           <div style={{ display: 'grid', gap: 12 }}>

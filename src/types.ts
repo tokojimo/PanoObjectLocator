@@ -24,16 +24,25 @@ export type Observation = {
   object_id: string;
   detection_id: string;
   pano_id: string;
+  xmin: number;
+  ymin: number;
+  xmax: number;
+  ymax: number;
+  cx: number;
   bearing_deg: number;
+  pano_lat: number;
+  pano_lng: number;
+  created_at: string;
 };
 
 export type ProjectObject = {
   object_id: string;
   color: string;
-  lat?: number;
-  lng?: number;
+  obj_lat?: number;
+  obj_lng?: number;
   n_obs: number;
   rms_m?: number;
+  updated_at?: string;
 };
 
 export type ProjectObjectsState = Record<string, ProjectObject>;
