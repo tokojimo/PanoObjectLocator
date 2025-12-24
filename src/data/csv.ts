@@ -18,8 +18,9 @@ export async function parseCsvFileWithMeta<T = Record<string, string | number>>(
   handle: FileSystemFileHandle | File
 ) {
   const file = await fileFromHandle(handle);
+  const headerText = await file.slice(0, 1024).text();
+  const delimiter = detectDelimiter(headerText);
   const text = await file.text();
-  const delimiter = detectDelimiter(text);
   return new Promise<{ rows: T[]; delimiter: string }>((resolve, reject) => {
     Papa.parse<T>(text, {
       delimiter,
@@ -39,9 +40,13 @@ export async function parseCsvFile<T = Record<string, string | number>>(handle: 
   return rows;
 }
 
-export async function parseWithSchema<T>(handle: FileSystemFileHandle | File, required: string[]) {
+export async function parseWithSchema<T>(
+  handle: FileSystemFileHandle | File,
+  required: string[],
+  aliases: Record<string, string[]> = {}
+) {
   const rows = await parseCsvFile<Record<string, unknown>>(handle);
-  const missing = validateColumns(Object.keys(rows[0] ?? {}), required);
+  const missing = validateColumns(Object.keys(rows[0] ?? {}), required, aliases);
   if (missing.length) throw new ValidationError(`Colonnes manquantes: ${missing.join(', ')}`);
   return rows as unknown as T[];
 }
