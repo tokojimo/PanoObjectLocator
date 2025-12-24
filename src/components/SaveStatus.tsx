@@ -1,14 +1,26 @@
 import { saveProject } from '../data/projectIO';
+import { detectDelimiter } from '../data/csv';
 import { useStore } from '../state/store';
 import { nowIso } from '../utils/time';
 
 export default function SaveStatus() {
   const { state, dispatch } = useStore();
 
+  const resolveDelimiter = async () => {
+    if (state.sources.projectDelimiter) return state.sources.projectDelimiter;
+    const { boxesHandle, metadataHandle } = state.sources;
+    const sourceHandle = boxesHandle ?? metadataHandle;
+    if (!sourceHandle) return ',';
+    const file = sourceHandle instanceof File ? sourceHandle : await sourceHandle.getFile();
+    const headerText = await file.slice(0, 1024).text();
+    return detectDelimiter(headerText);
+  };
+
   const onSave = async () => {
     try {
       dispatch({ type: 'setSaveState', payload: { status: 'saving', error: undefined } });
-      const handle = await saveProject(state);
+      const delimiter = await resolveDelimiter();
+      const handle = await saveProject(state, undefined, delimiter);
       dispatch({ type: 'setSources', payload: { projectHandle: handle } });
       dispatch({ type: 'setSaveState', payload: { status: 'saved', lastSavedAt: nowIso() } });
     } catch (err: any) {

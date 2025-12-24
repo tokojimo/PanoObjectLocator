@@ -150,18 +150,19 @@ function toCsvLine(values: (string | number | undefined)[], delimiter: string) {
 
 export async function saveProject(
   state: { observationsByObjectId: Record<string, Observation[]>; objectsById: ProjectObjectsState; sources: any },
-  projectHandle?: FileSystemFileHandle
+  projectHandle?: FileSystemFileHandle,
+  delimiter?: string
 ) {
   let handle = projectHandle ?? state.sources.projectHandle;
   if (!handle) {
     if (!('showSaveFilePicker' in window)) throw new Error('showSaveFilePicker non supporté');
-    [handle] = await (window as any).showSaveFilePicker({
+    handle = await (window as any).showSaveFilePicker({
       suggestedName: 'pano_project.csv',
       types: [{ description: 'CSV', accept: { 'text/csv': ['.csv'] } }],
     });
   }
 
-  const delimiter = state.sources?.projectDelimiter ?? ',';
+  const delim = delimiter ?? state.sources?.projectDelimiter ?? ',';
 
   const headers = [
     'row_type',
@@ -184,7 +185,7 @@ export async function saveProject(
     'color',
   ];
 
-  const lines: string[] = [headers.join(delimiter)];
+  const lines: string[] = [headers.join(delim)];
   Object.entries(state.observationsByObjectId).forEach(([objectId, observations]) => {
     observations.forEach((obs) => {
       lines.push(
@@ -207,7 +208,7 @@ export async function saveProject(
           '',
           obs.created_at,
           '',
-        ], delimiter)
+        ], delim)
       );
     });
   });
@@ -233,7 +234,7 @@ export async function saveProject(
         obj.rms_m,
         obj.updated_at ?? nowIso(),
         obj.color,
-      ], delimiter)
+      ], delim)
     );
   });
 
