@@ -113,6 +113,7 @@ function reducer(state: AppState, action: AppAction): AppState {
         detectionsById,
         observationsByObjectId,
         objectsById,
+        ui: { ...state.ui, openPanos: [], highlight: undefined },
         save: { status: 'idle', lastSavedAt: undefined },
       };
     }

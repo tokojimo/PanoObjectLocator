@@ -35,9 +35,11 @@ function computeObjects(observationsByObjectId: Record<string, Observation[]>, e
 
 async function resolveImageHandle(directory: FileSystemDirectoryHandle | undefined, panoId: string) {
   if (!directory) return undefined;
+  const iterator = (directory as any).values?.bind(directory);
+  if (!iterator) return undefined;
   const target = `${panoId}`.toLowerCase();
   const candidates = new Set([`${target}.jpg`, `${target}.jpeg`, `${target}.png`]);
-  for await (const entry of directory.values()) {
+  for await (const entry of iterator()) {
     if (entry.kind === 'file' && candidates.has(entry.name.toLowerCase())) {
       return directory.getFileHandle(entry.name);
     }
@@ -47,10 +49,14 @@ async function resolveImageHandle(directory: FileSystemDirectoryHandle | undefin
 
 export async function loadBoxes(handle: FileSystemFileHandle | File): Promise<Detection[]> {
   const rows = await parseWithSchema<Detection>(handle, BOX_COLUMNS);
-  return rows.map((row) => ({
-    ...row,
-    detection_id: makeDetectionId(row.pano_id, row.xmin, row.ymin, row.xmax, row.ymax, row.score),
-  }));
+  return rows.map((row) => {
+    const pano_id = String(row.pano_id).trim();
+    return {
+      ...row,
+      pano_id,
+      detection_id: makeDetectionId(pano_id, row.xmin, row.ymin, row.xmax, row.ymax, row.score),
+    };
+  });
 }
 
 export async function loadMetadata(handle: FileSystemFileHandle | File, directory?: FileSystemDirectoryHandle) {
@@ -71,7 +77,7 @@ export async function loadMetadata(handle: FileSystemFileHandle | File, director
       return undefined;
     };
 
-    const panoId = (normalized['pano_id'] ?? normalized['panoid']) as string;
+    const panoId = String(normalized['pano_id'] ?? normalized['panoid'] ?? '').trim();
     const lat = Number(resolveValue('lat'));
     const lng = Number(resolveValue('lon'));
     const heading = Number(normalized['heading'] ?? 0);
