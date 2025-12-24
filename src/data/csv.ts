@@ -7,19 +7,36 @@ async function fileFromHandle(handle: FileSystemFileHandle | File): Promise<File
   return handle.getFile();
 }
 
-export async function parseCsvFile<T = Record<string, string | number>>(handle: FileSystemFileHandle | File) {
+export function detectDelimiter(textOrFirstLine: string) {
+  const [line] = textOrFirstLine.split(/\r?\n/);
+  const commaCount = (line.match(/,/g) ?? []).length;
+  const semicolonCount = (line.match(/;/g) ?? []).length;
+  return semicolonCount > commaCount ? ';' : ',';
+}
+
+export async function parseCsvFileWithMeta<T = Record<string, string | number>>(
+  handle: FileSystemFileHandle | File
+) {
   const file = await fileFromHandle(handle);
-  return new Promise<T[]>((resolve, reject) => {
-    Papa.parse<T>(file, {
+  const text = await file.text();
+  const delimiter = detectDelimiter(text);
+  return new Promise<{ rows: T[]; delimiter: string }>((resolve, reject) => {
+    Papa.parse<T>(text, {
+      delimiter,
       header: true,
       dynamicTyping: true,
       skipEmptyLines: true,
       complete: (result) => {
-        resolve(result.data);
+        resolve({ rows: result.data, delimiter });
       },
       error: (err) => reject(err),
     });
   });
+}
+
+export async function parseCsvFile<T = Record<string, string | number>>(handle: FileSystemFileHandle | File) {
+  const { rows } = await parseCsvFileWithMeta<T>(handle);
+  return rows;
 }
 
 export async function parseWithSchema<T>(handle: FileSystemFileHandle | File, required: string[]) {

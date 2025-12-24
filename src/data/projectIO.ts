@@ -1,7 +1,7 @@
 import { Detection, Observation, Pano, ProjectObject, ProjectObjectsState } from '../types';
 import { makeDetectionId, makeObservationId } from '../utils/ids';
 import { nowIso } from '../utils/time';
-import { parseCsvFile, parseWithSchema } from './csv';
+import { parseCsvFile, parseCsvFileWithMeta, parseWithSchema } from './csv';
 import { BOX_COLUMNS, META_COLUMNS, META_ALIASES, PROJECT_COLUMNS } from './schema';
 import { triangulate } from '../geo/triangulation';
 import { buildColorMap } from '../state/colors';
@@ -9,7 +9,7 @@ import { buildColorMap } from '../state/colors';
 export type ProjectData = {
   panos: Pano[];
   detections: Detection[];
-  project?: { observationsByObjectId: Record<string, Observation[]>; objectsById: ProjectObjectsState };
+  project?: { observationsByObjectId: Record<string, Observation[]>; objectsById: ProjectObjectsState; delimiter?: string };
 };
 
 function computeObjects(observationsByObjectId: Record<string, Observation[]>, existing?: ProjectObjectsState) {
@@ -96,7 +96,7 @@ export async function loadMetadata(handle: FileSystemFileHandle | File, director
 }
 
 export async function loadProject(handle: FileSystemFileHandle | File) {
-  const rows = await parseCsvFile<Record<string, any>>(handle);
+  const { rows, delimiter } = await parseCsvFileWithMeta<Record<string, any>>(handle);
   const observationsByObjectId: Record<string, Observation[]> = {};
   const objectsById: ProjectObjectsState = {};
   rows.forEach((row) => {
@@ -132,17 +132,20 @@ export async function loadProject(handle: FileSystemFileHandle | File) {
     }
   });
   const computed = computeObjects(observationsByObjectId, objectsById);
-  return { observationsByObjectId, objectsById: computed };
+  return { observationsByObjectId, objectsById: computed, delimiter };
 }
 
-function toCsvLine(values: (string | number | undefined)[]) {
+function toCsvLine(values: (string | number | undefined)[], delimiter: string) {
   return values
     .map((v) => {
       if (v === undefined) return '';
       const value = String(v);
-      return value.includes(',') ? `"${value}"` : value;
+      const needsQuoting = value.includes(delimiter) || /\r?\n/.test(value) || value.includes('"');
+      if (!needsQuoting) return value;
+      const escaped = value.replace(/"/g, '""');
+      return `"${escaped}"`;
     })
-    .join(',');
+    .join(delimiter);
 }
 
 export async function saveProject(
@@ -157,6 +160,8 @@ export async function saveProject(
       types: [{ description: 'CSV', accept: { 'text/csv': ['.csv'] } }],
     });
   }
+
+  const delimiter = state.sources?.projectDelimiter ?? ',';
 
   const headers = [
     'row_type',
@@ -179,7 +184,7 @@ export async function saveProject(
     'color',
   ];
 
-  const lines: string[] = [headers.join(',')];
+  const lines: string[] = [headers.join(delimiter)];
   Object.entries(state.observationsByObjectId).forEach(([objectId, observations]) => {
     observations.forEach((obs) => {
       lines.push(
@@ -202,7 +207,7 @@ export async function saveProject(
           '',
           obs.created_at,
           '',
-        ])
+        ], delimiter)
       );
     });
   });
@@ -228,7 +233,7 @@ export async function saveProject(
         obj.rms_m,
         obj.updated_at ?? nowIso(),
         obj.color,
-      ])
+      ], delimiter)
     );
   });
 
