@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { loadBoxes, loadMetadata, loadProject } from '../data/projectIO';
-import { BOX_COLUMNS, META_COLUMNS, PROJECT_COLUMNS, validateColumns } from '../data/schema';
+import { BOX_COLUMNS, META_ALIASES, META_COLUMNS, PROJECT_COLUMNS, validateColumns } from '../data/schema';
 import { useStore } from '../state/store';
 import { ValidationError } from '../utils/errors';
 
@@ -83,11 +83,15 @@ export default function SourcePicker() {
     }
   };
 
-  const validateCsv = async (handle: FileSystemFileHandle | File, expected: string[]) => {
+  const validateCsv = async (
+    handle: FileSystemFileHandle | File,
+    expected: string[],
+    aliases: Record<string, string[]> = {}
+  ) => {
     const file = handle instanceof File ? handle : await handle.getFile();
     const text = await file.text();
     const [headerLine] = text.split(/\r?\n/);
-    const missing = validateColumns(headerLine.split(','), expected);
+    const missing = validateColumns(headerLine.split(','), expected, aliases);
     if (missing.length) throw new ValidationError(`Colonnes manquantes: ${missing.join(', ')}`);
   };
 
@@ -106,7 +110,7 @@ export default function SourcePicker() {
       }
 
       await validateCsv(boxes, BOX_COLUMNS);
-      await validateCsv(meta, META_COLUMNS);
+      await validateCsv(meta, META_COLUMNS, META_ALIASES);
       if (project) await validateCsv(project, PROJECT_COLUMNS);
 
       const [detections, panos, projectData] = await Promise.all([
