@@ -21,9 +21,11 @@ export default function App() {
             <TodoList />
             <SaveStatus />
           </div>
-          <div style={{ display: 'grid', gap: 12 }}>
+          <div className="right-panel">
             <MapView />
-            <PanoDock />
+            <div className="dock-wrapper">
+              <PanoDock />
+            </div>
           </div>
         </div>
       </div>
