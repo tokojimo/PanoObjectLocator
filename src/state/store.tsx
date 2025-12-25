@@ -3,6 +3,7 @@ import type { Detection, Observation, Pano, ProjectObjectsState } from '../types
 import { triangulate } from '../geo/triangulation';
 import { buildColorMap } from './colors';
 import { nowIso } from '../utils/time';
+import { AutoAssignConfig, autoAssignObjects } from './autoAssign';
 
 export type SourceState = {
   imageDirectory?: FileSystemDirectoryHandle;
@@ -16,6 +17,7 @@ export type UIState = {
   openPanos: string[];
   statusMessage?: string;
   highlight?: { pano_id: string; detection_id: string };
+  autoAssign: AutoAssignConfig;
 };
 
 export type SaveState = {
@@ -58,7 +60,10 @@ export type AppAction =
   | { type: 'closePano'; payload: string }
   | { type: 'setHighlight'; payload?: { pano_id: string; detection_id: string } }
   | { type: 'setSaveState'; payload: Partial<SaveState> }
-  | { type: 'setStatus'; payload?: string };
+  | { type: 'setStatus'; payload?: string }
+  | { type: 'setAutoAssignConfig'; payload: Partial<AutoAssignConfig> }
+  | { type: 'autoAssignActiveObject' }
+  | { type: 'autoAssignAllObjects' };
 
 const initialState: AppState = {
   sources: {},
@@ -68,6 +73,7 @@ const initialState: AppState = {
   objectsById: {},
   ui: {
     openPanos: [],
+    autoAssign: { rmsMax: 2, maxObsPerObject: 8, minAngleDiff: 10 },
   },
   save: { status: 'idle' },
 };
@@ -196,6 +202,29 @@ function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, save: { ...state.save, ...action.payload } };
     case 'setStatus':
       return { ...state, ui: { ...state.ui, statusMessage: action.payload } };
+    case 'setAutoAssignConfig':
+      return { ...state, ui: { ...state.ui, autoAssign: { ...state.ui.autoAssign, ...action.payload } } };
+    case 'autoAssignActiveObject': {
+      if (!state.activeObjectId) return state;
+      const observationsByObjectId = autoAssignObjects(state, [state.activeObjectId], state.ui.autoAssign);
+      return {
+        ...state,
+        observationsByObjectId,
+        objectsById: recomputeObjects(state, observationsByObjectId),
+        save: { ...state.save, status: 'dirty', error: undefined },
+      };
+    }
+    case 'autoAssignAllObjects': {
+      const objectIds = Object.keys(state.objectsById);
+      if (!objectIds.length) return state;
+      const observationsByObjectId = autoAssignObjects(state, objectIds, state.ui.autoAssign);
+      return {
+        ...state,
+        observationsByObjectId,
+        objectsById: recomputeObjects(state, observationsByObjectId),
+        save: { ...state.save, status: 'dirty', error: undefined },
+      };
+    }
     default:
       return state;
   }

@@ -124,6 +124,30 @@ input[type='file'] {
   flex-direction: column;
 }
 
+.auto-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-controls {
+  display: grid;
+  grid-template-columns: 1fr 80px;
+  gap: 8px;
+  align-items: center;
+}
+
+.field input[type='number'] {
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
