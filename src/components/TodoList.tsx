@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { selectObservationAssignments } from '../state/selectors';
 import { useStore } from '../state/store';
 
 export default function TodoList() {
+  const [listHeight, setListHeight] = useState(260);
   const { state, dispatch } = useStore();
   const assignments = useMemo(() => selectObservationAssignments(state), [state.observationsByObjectId]);
   const unassignedDetections = useMemo(
@@ -23,16 +24,34 @@ export default function TodoList() {
     <div className="panel">
       <h3>Objets non définis</h3>
       {!unassignedDetections.length && !weakObjects.length && <div className="status">Aucun élément en attente.</div>}
-      {unassignedDetections.length > 0 && (
-        <div className="list" style={{ marginBottom: 8 }}>
+      <div className="todo-box" style={{ marginBottom: 8 }}>
+        <div className="todo-header">
           <div className="status">Boxes libres</div>
-          {unassignedDetections.map((det) => (
-            <button key={det.detection_id} className="secondary" onClick={() => goToDetection(det.pano_id, det.detection_id)}>
-              {det.pano_id} • {det.detection_id}
-            </button>
-          ))}
+          <span className="badge">{unassignedDetections.length}</span>
         </div>
-      )}
+        <label className="todo-slider">
+          <span>Hauteur : {listHeight}px</span>
+          <input
+            type="range"
+            min={160}
+            max={650}
+            step={10}
+            value={listHeight}
+            onChange={(event) => setListHeight(Number(event.target.value))}
+          />
+        </label>
+        <div className="todo-list" style={{ maxHeight: listHeight }}>
+          {unassignedDetections.length ? (
+            unassignedDetections.map((det) => (
+              <button key={det.detection_id} className="secondary" onClick={() => goToDetection(det.pano_id, det.detection_id)}>
+                {det.pano_id} • {det.detection_id}
+              </button>
+            ))
+          ) : (
+            <div className="status">Tout est assigné.</div>
+          )}
+        </div>
+      </div>
       {weakObjects.length > 0 && (
         <div className="list">
           <div className="status">Objets à compléter (&lt;2 obs)</div>
