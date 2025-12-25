@@ -35,10 +35,22 @@ function computeObjects(observationsByObjectId: Record<string, Observation[]>, e
 
 async function resolveImageHandle(directory: FileSystemDirectoryHandle | undefined, panoId: string) {
   if (!directory) return undefined;
+
   const iterator = (directory as any).values?.bind(directory);
   if (!iterator) return undefined;
-  const target = `${panoId}`.toLowerCase();
-  const candidates = new Set([`${target}.jpg`, `${target}.jpeg`, `${target}.png`]);
+
+  const base = String(panoId).trim().toLowerCase();
+
+  // Noms acceptés
+  const candidates = new Set([
+    `${base}.jpg`,
+    `${base}.jpeg`,
+    `${base}.png`,
+    `${base}_visu.jpg`,
+    `${base}_visu.jpeg`,
+    `${base}_visu.png`,
+  ]);
+
   for await (const entry of iterator()) {
     if (entry.kind === 'file' && candidates.has(entry.name.toLowerCase())) {
       return directory.getFileHandle(entry.name);
