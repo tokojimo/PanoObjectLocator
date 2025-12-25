@@ -75,7 +75,7 @@ export function PanoViewer({ pano, detections }: { pano: Pano; detections: Detec
   };
 
   return (
-    <div>
+    <div className="pano-viewer">
       <div className="pano-frame">
         <div className="pano-canvas">
           {imageUrl ? (
