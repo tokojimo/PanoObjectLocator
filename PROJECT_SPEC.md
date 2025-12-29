@@ -1,325 +1,296 @@
-PROJECT_SPEC.md
+# PROJECT_SPEC.md
 
-Ce document est la référence fonctionnelle et technique autoritative du projet. Toute implémentation doit se conformer strictement aux spécifications ci-dessous.
+Ce document est la référence fonctionnelle et technique **autoritative** du projet. Toute implémentation doit se conformer strictement aux spécifications ci-dessous.
 
-1. Vision du projet
+---
 
-Développer une application web 100 % locale (frontend-only) permettant de géolocaliser avec précision des objets fixes visibles dans des panoramas 360° (Street View ou équivalent), par association manuelle assistée et triangulation en temps réel.
+## 1. Vision du projet
+
+Développer une application web **100 % locale (frontend-only)** permettant de géolocaliser avec précision des **objets fixes** visibles dans des panoramas 360° (Street View ou équivalent), par **association manuelle assistée** et **triangulation en temps réel**.
 
 Public cible : utilisateurs experts.
 
 Priorités :
 
-précision géométrique
-
-contrôle utilisateur total
-
-traçabilité des décisions
-
-reprise fiable de session
+* précision géométrique
+* contrôle utilisateur total
+* traçabilité des décisions
+* reprise fiable de session
 
 Aucune automatisation « boîte noire » : l’utilisateur reste décisionnaire à chaque étape.
 
-2. Contraintes fondamentales
+---
 
-Application 100 % locale
+## 2. Contraintes fondamentales
 
-Aucun backend requis
+* Application **100 % locale**
+* **Aucun backend requis**
+* **Aucune requête d’images vers Google** ou services externes
+* Utilisation exclusive de données fournies par l’utilisateur :
 
-Aucune requête d’images vers Google ou services externes
+  * panoramas locaux (images équirectangulaires)
+  * fichiers CSV
+* Compatibilité cible : **Chrome / Edge**
 
-Utilisation exclusive de données fournies par l’utilisateur :
+  * utilisation de la **File System Access API**
 
-panoramas locaux (images équirectangulaires)
+---
 
-fichiers CSV
+## 3. Données manipulées
 
-Compatibilité cible : Chrome / Edge
-
-utilisation de la File System Access API
-
-3. Données manipulées
-3.1 Données d’entrée
+### 3.1 Données d’entrée
 
 Sélectionnées depuis l’interface utilisateur.
 
-3.1.1 Dossier des panoramas
+#### 3.1.1 Dossier des panoramas
 
-Contient les images panoramiques locales
+* Contient les images panoramiques locales
+* Format : JPG / PNG équirectangulaire
+* Convention de nommage : `pano_id.jpg` ou `pano_id.png`
 
-Format : JPG / PNG équirectangulaire
+#### 3.1.2 CSV des détections / boxes
 
-Convention de nommage : pano_id.jpg ou pano_id.png
+* Une ligne par box détectée
+* Colonnes minimales attendues :
 
-3.1.2 CSV des détections / boxes
+  * `pano_id`
+  * `xmin`, `ymin`, `xmax`, `ymax`
+* Colonnes optionnelles :
 
-Une ligne par box détectée
+  * `score`
 
-Colonnes minimales attendues :
+#### 3.1.3 CSV des métadonnées panoramas
 
-pano_id
+* Une ligne par panorama
+* Colonnes attendues :
 
-xmin, ymin, xmax, ymax
+  * `pano_id`
+  * `lat`, `lon`
+  * `heading` (degrés, nord géographique)
+  * `imageWidth`, `imageHeight`
 
-Colonnes optionnelles :
+#### 3.1.4 CSV projet existant (optionnel)
 
-score
+* Ancien fichier de sortie du projet
+* Permet la reprise complète d’une session précédente
 
-3.1.3 CSV des métadonnées panoramas
+---
 
-Une ligne par panorama
+### 3.2 Données de sortie — Fichier projet
 
-Colonnes attendues :
+Un **CSV unique**, mis à jour incrémentalement.
 
-pano_id
+#### Structure générale
 
-lat, lon
+Chaque ligne est typée via `row_type` :
 
-heading (degrés, nord géographique)
+* `OBS` : observation individuelle
+* `OBJ` : état courant d’un objet géolocalisé
 
-imageWidth, imageHeight
-
-3.1.4 CSV projet existant (optionnel)
-
-Ancien fichier de sortie du projet
-
-Permet la reprise complète d’une session précédente
-
-3.2 Données de sortie — Fichier projet
-
-Un CSV unique, mis à jour incrémentalement.
-
-Structure générale
-
-Chaque ligne est typée via row_type :
-
-OBS : observation individuelle
-
-OBJ : état courant d’un objet géolocalisé
-
-Colonnes
+#### Colonnes
 
 Communes :
 
-row_type (OBS / OBJ)
-
-object_id
-
-updated_at (ISO 8601)
+* `row_type` (`OBS` / `OBJ`)
+* `object_id`
+* `updated_at` (ISO 8601)
 
 Spécifiques OBS :
 
-pano_id
-
-xmin, ymin, xmax, ymax
-
-cx (centre horizontal normalisé ou en pixels)
-
-bearing_deg
-
-pano_lat, pano_lng
+* `pano_id`
+* `xmin`, `ymin`, `xmax`, `ymax`
+* `cx` (centre horizontal normalisé ou en pixels)
+* `bearing_deg`
+* `pano_lat`, `pano_lng`
 
 Spécifiques OBJ :
 
-obj_lat, obj_lng
+* `obj_lat`, `obj_lng`
+* `n_obs`
+* `rms_m`
 
-n_obs
+#### Règles
 
-rms_m
+* Plusieurs lignes `OBS` par `object_id`
+* Une seule ligne `OBJ` par `object_id` (solution valide la plus récente)
 
-Règles
+---
 
-Plusieurs lignes OBS par object_id
+## 4. Écran de configuration (Sources & Projet)
 
-Une seule ligne OBJ par object_id (solution valide la plus récente)
+### Objectif
 
-4. Écran de configuration (Sources & Projet)
-Objectif
+Permettre la configuration complète d’un projet **depuis l’UI**, sans modification du code.
 
-Permettre la configuration complète d’un projet depuis l’UI, sans modification du code.
+### Éléments UI
 
-Éléments UI
+* Bouton **Choisir dossier d’images** (Directory Picker)
+* Bouton **Choisir CSV boxes**
+* Bouton **Choisir CSV métadonnées panos**
+* Bouton **Choisir CSV projet existant** (optionnel)
 
-Bouton Choisir dossier d’images (Directory Picker)
+### Comportement
 
-Bouton Choisir CSV boxes
+* Vérification immédiate :
 
-Bouton Choisir CSV métadonnées panos
+  * existence des fichiers
+  * colonnes attendues
+* Messages d’erreur explicites
+* Si un CSV projet est fourni :
 
-Bouton Choisir CSV projet existant (optionnel)
+  * chargement des observations
+  * chargement des objets
+  * restauration complète de l’état
+* Bouton **Charger le projet**
+* Mémorisation optionnelle des choix dans un `config.json` local (IndexedDB)
 
-Comportement
+---
 
-Vérification immédiate :
+## 5. Carte principale
 
-existence des fichiers
-
-colonnes attendues
-
-Messages d’erreur explicites
-
-Si un CSV projet est fourni :
-
-chargement des observations
-
-chargement des objets
-
-restauration complète de l’état
-
-Bouton Charger le projet
-
-Mémorisation optionnelle des choix dans un config.json local (IndexedDB)
-
-5. Carte principale
-Fonction
+### Fonction
 
 Vue centrale de navigation et de contrôle spatial.
 
-Contenu
+### Contenu
 
-Points panoramas (positions fixes)
+* Points panoramas (positions fixes)
+* Points objets (positions triangulées)
 
-Points objets (positions triangulées)
+### Interactions
 
-Interactions
+* Clic sur un panorama : ouverture du panorama correspondant
+* Objets affichés avec une couleur stable par `object_id`
+* Mise à jour en temps réel lors de nouvelles observations
 
-Clic sur un panorama : ouverture du panorama correspondant
+---
 
-Objets affichés avec une couleur stable par object_id
+## 6. Gestion des panoramas (multi-fenêtres)
 
-Mise à jour en temps réel lors de nouvelles observations
+### Affichage
 
-6. Gestion des panoramas (multi-fenêtres)
-Affichage
+* Chaque panorama s’ouvre dans une fenêtre indépendante
+* Nombre de panoramas ouverts non limité
 
-Chaque panorama s’ouvre dans une fenêtre indépendante
+### Fonctionnalités
 
-Nombre de panoramas ouverts non limité
+* Zoom / pan
+* Bouton de fermeture (❌)
+* Affichage des métadonnées (`pano_id`, `heading`)
+* Affichage des boxes détectées
 
-Fonctionnalités
+### Interaction principale
 
-Zoom / pan
+* Clic sur une box = ajout d’une observation pour l’objet actif
+* Les boxes sélectionnées changent de couleur selon l’objet actif
 
-Bouton de fermeture (❌)
+---
 
-Affichage des métadonnées (pano_id, heading)
+## 7. Gestion des objets
 
-Affichage des boxes détectées
+### Objet actif
 
-Interaction principale
+* Un seul objet actif à la fois
+* Identifié par un `object_id`
+* Couleur dédiée et cohérente dans toute l’UI
 
-Clic sur une box = ajout d’une observation pour l’objet actif
+### Changement d’objet
 
-Les boxes sélectionnées changent de couleur selon l’objet actif
+* Bouton **Nouvel objet**
+* Sélecteur d’objets existants
+* Le changement d’objet n’affecte pas les panoramas ouverts
 
-7. Gestion des objets
-Objet actif
+---
 
-Un seul objet actif à la fois
+## 8. Triangulation et calculs
 
-Identifié par un object_id
-
-Couleur dédiée et cohérente dans toute l’UI
-
-Changement d’objet
-
-Bouton Nouvel objet
-
-Sélecteur d’objets existants
-
-Le changement d’objet n’affecte pas les panoramas ouverts
-
-8. Triangulation et calculs
-Principe
+### Principe
 
 Chaque observation fournit :
 
-un point d’origine (position du panorama)
+* un point d’origine (position du panorama)
+* une direction (azimut issu de la position horizontale de la box)
 
-une direction (azimut issu de la position horizontale de la box)
+### Calcul
 
-Calcul
+* ≥ 2 observations :
 
-≥ 2 observations :
+  * intersection géométrique de rayons
+* ≥ 3 observations :
 
-intersection géométrique de rayons
+  * optimisation par moindres carrés
 
-≥ 3 observations :
+### Qualité
 
-optimisation par moindres carrés
+* RMS en mètres
+* Utilisé comme indicateur de fiabilité
+* Recalcul en temps réel à chaque nouvelle observation
 
-Qualité
+---
 
-RMS en mètres
+## 9. Liste des objets à traiter (Backlog)
 
-Utilisé comme indicateur de fiabilité
-
-Recalcul en temps réel à chaque nouvelle observation
-
-9. Liste des objets à traiter (Backlog)
-Description
+### Description
 
 Liste automatique des objets détectés sans position finale validée.
 
-Interaction
+### Interaction
 
-Clic sur un élément :
+* Clic sur un élément :
 
-ouverture du panorama concerné
+  * ouverture du panorama concerné
+  * mise en évidence de la box associée
 
-mise en évidence de la box associée
+---
 
-10. Sauvegarde et persistance
-Actions
+## 10. Sauvegarde et persistance
 
-Bouton Enregistrer
+### Actions
 
-Comportement
+* Bouton **Enregistrer**
 
-Si un CSV projet est déjà sélectionné :
+### Comportement
 
-mise à jour incrémentale du fichier
+* Si un CSV projet est déjà sélectionné :
 
-conservation des données existantes
+  * mise à jour incrémentale du fichier
+  * conservation des données existantes
+* Sinon :
 
-Sinon :
+  * ouverture d’un **Save As…**
+  * création d’un nouveau fichier projet
 
-ouverture d’un Save As…
+### Autosave (optionnel)
 
-création d’un nouveau fichier projet
+* Sauvegarde automatique après chaque action
+* Mécanisme de debounce
 
-Autosave (optionnel)
+### Feedback utilisateur
 
-Sauvegarde automatique après chaque action
+* Statut : Non enregistré / Enregistré / Erreur
+* Timestamp de dernière sauvegarde
 
-Mécanisme de debounce
+---
 
-Feedback utilisateur
-
-Statut : Non enregistré / Enregistré / Erreur
-
-Timestamp de dernière sauvegarde
-
-11. Reprise de session
+## 11. Reprise de session
 
 À l’ouverture d’un projet :
 
-rechargement des observations
+* rechargement des observations
+* rechargement des objets validés
+* reconstruction de la carte
+* reconstruction des listes et états UI
 
-rechargement des objets validés
+---
 
-reconstruction de la carte
+## 12. Traçabilité et auditabilité
 
-reconstruction des listes et états UI
+* Chaque observation est conservée sans écrasement
+* Les solutions objets sont versionnées implicitement via `updated_at`
+* Le CSV projet est exploitable directement dans un SIG
 
-12. Traçabilité et auditabilité
+---
 
-Chaque observation est conservée sans écrasement
-
-Les solutions objets sont versionnées implicitement via updated_at
-
-Le CSV projet est exploitable directement dans un SIG
-
-13. Résumé exécutif
+## 13. Résumé exécutif
 
 Application web locale experte permettant d’associer manuellement des observations issues de panoramas 360° afin de géolocaliser précisément des objets fixes par triangulation en temps réel, avec une interface multi-panoramas, une carte interactive et une sauvegarde incrémentale exploitable en SIG.
