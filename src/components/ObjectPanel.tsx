@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
-import { AutoAssignConfig, autoAssignObjectsProgressive } from '../state/autoAssign';
+import { AutoAssignConfig, autoAssignObjectsProgressive, previewPanoClusters } from '../state/autoAssign';
 import { selectObservationAssignments } from '../state/selectors';
 import { useStore } from '../state/store';
 
 export default function ObjectPanel() {
   const { state, dispatch } = useStore();
   const [error, setError] = useState<string | undefined>();
+  const [clusterError, setClusterError] = useState<string | undefined>();
+  const [isPreviewing, setIsPreviewing] = useState(false);
   const objects = useMemo(() => Object.values(state.objectsById), [state.objectsById]);
   const assignments = useMemo(() => selectObservationAssignments(state), [state.observationsByObjectId]);
   const unassignedCount = useMemo(
@@ -46,6 +48,37 @@ export default function ObjectPanel() {
       setError(message);
     } finally {
       dispatch({ type: 'setAutoAssignProgress', payload: null });
+    }
+  };
+
+  const runClusterPreview = async () => {
+    setClusterError(undefined);
+    setIsPreviewing(true);
+    try {
+      const clusters = await Promise.resolve(
+        previewPanoClusters(
+          {
+            panosById: state.panosById,
+            detectionsById: state.detectionsById,
+            observationsByObjectId: state.observationsByObjectId,
+          },
+          state.ui.autoAssign
+        )
+      );
+
+      dispatch({
+        type: 'setClusterPreview',
+        payload: {
+          clusters,
+          params: { clusterDistanceM: state.ui.autoAssign.clusterDistanceM },
+        },
+      });
+    } catch (err) {
+      console.error('Cluster preview failed', err);
+      const message = err instanceof Error ? err.message : 'Erreur inconnue lors du clustering.';
+      setClusterError(message);
+    } finally {
+      setIsPreviewing(false);
     }
   };
 
@@ -200,6 +233,29 @@ export default function ObjectPanel() {
               />
             </div>
           </label>
+          <label className="field">
+            <div className="status">
+              CLUSTER_DISTANCE_M (m): {state.ui.autoAssign.clusterDistanceM}
+            </div>
+            <div className="field-controls">
+              <input
+                type="range"
+                min={10}
+                max={300}
+                step={5}
+                value={state.ui.autoAssign.clusterDistanceM}
+                onChange={(e) => handleConfigChange('clusterDistanceM', Number(e.target.value))}
+              />
+              <input
+                type="number"
+                min={0}
+                max={500}
+                step={5}
+                value={state.ui.autoAssign.clusterDistanceM}
+                onChange={(e) => handleConfigChange('clusterDistanceM', Number(e.target.value))}
+              />
+            </div>
+          </label>
         </div>
         <div className="button-row" style={{ marginTop: 8 }}>
           <button
@@ -224,6 +280,67 @@ export default function ObjectPanel() {
               Calcul {progress.mode === 'all' ? 'tous objets' : 'objet actif'} : {progress.current}/{progress.total}
             </div>
             <progress className="progress-bar" max={progress.total} value={progress.current} />
+          </div>
+        )}
+      </div>
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="card-header">
+          <div>
+            <div className="status" style={{ margin: 0 }}>
+              Clustering manuel
+            </div>
+            <strong>Ajuster avant l'auto-assign</strong>
+          </div>
+          <span className="badge">
+            {state.ui.clusterPreview
+              ? `${state.ui.clusterPreview.clusters.length} clusters`
+              : 'Pas encore de clustering'}
+          </span>
+        </div>
+        <div className="status" style={{ marginBottom: 8 }}>
+          Lancez un clustering avec les paramètres courants pour inspecter les grappes de panos libres.
+        </div>
+        {clusterError && (
+          <div className="status" style={{ color: '#e11d48', marginBottom: 8 }}>
+            {clusterError}
+          </div>
+        )}
+        <div className="button-row" style={{ marginTop: 4 }}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={runClusterPreview}
+            disabled={!hasDetections || isRunning || isPreviewing}
+          >
+            {isPreviewing ? 'Calcul…' : 'Prévisualiser le clustering'}
+          </button>
+          {state.ui.clusterPreview && (
+            <div className="status" style={{ margin: 0 }}>
+              Distance ≤ {state.ui.clusterPreview.params.clusterDistanceM} m — dernière mise à jour :{' '}
+              {new Date(state.ui.clusterPreview.updatedAt).toLocaleTimeString()}
+            </div>
+          )}
+        </div>
+        {state.ui.clusterPreview && (
+          <div className="cluster-grid">
+            {state.ui.clusterPreview.clusters.slice(0, 20).map((cluster, idx) => (
+              <div key={`${cluster.panoIds.join('-')}-${idx}`} className="cluster-card">
+                <div className="status" style={{ margin: 0 }}>
+                  Cluster #{idx + 1} — score {cluster.score}
+                </div>
+                <div className="status" style={{ margin: 0 }}>
+                  Panos: {cluster.panoIds.length}
+                </div>
+                <div className="status" style={{ margin: 0 }}>
+                  Boxes libres: {cluster.detectionIds.length}
+                </div>
+              </div>
+            ))}
+            {state.ui.clusterPreview.clusters.length > 20 && (
+              <div className="status" style={{ marginTop: 4 }}>
+                ({state.ui.clusterPreview.clusters.length - 20} clusters supplémentaires masqués)
+              </div>
+            )}
           </div>
         )}
       </div>

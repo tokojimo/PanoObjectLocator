@@ -1,6 +1,6 @@
-import { createAutoAssignContext, seedGrowAssign } from './seedGrow';
-import type { AutoAssignState, AutoAssignConfig } from './seedGrow';
-export type { AutoAssignConfig } from './seedGrow';
+import { clusterPanos, createAutoAssignContext, seedGrowAssign } from './seedGrow';
+import type { AutoAssignState, AutoAssignConfig, PanoCluster } from './seedGrow';
+export type { AutoAssignConfig, PanoCluster } from './seedGrow';
 import type { Observation } from '../types';
 
 export type AutoAssignProgressHandler = (progress: {
@@ -28,6 +28,24 @@ export function autoAssignObjects(state: AutoAssignState, objectIds: string[], c
   });
 
   return observationsByObjectId;
+}
+
+export function previewPanoClusters(state: AutoAssignState, config: AutoAssignConfig): PanoCluster[] {
+  const observationsByObjectId: Record<string, Observation[]> = { ...state.observationsByObjectId };
+  const assigned = new Set<string>();
+  const context = createAutoAssignContext(state);
+
+  Object.values(observationsByObjectId).forEach((list) => {
+    list?.forEach((obs) => assigned.add(obs.detection_id));
+  });
+
+  return clusterPanos(
+    state,
+    assigned,
+    context.detectionsByPano,
+    context.panoBuckets,
+    config.clusterDistanceM
+  );
 }
 
 export async function autoAssignObjectsProgressive(

@@ -9,6 +9,7 @@ export type AutoAssignConfig = {
   maxShiftM: number;
   minAngleDiff: number;
   maxObsPerObject: number;
+  clusterDistanceM: number;
 };
 
 export type AutoAssignState = {
@@ -17,7 +18,7 @@ export type AutoAssignState = {
   observationsByObjectId: Record<string, Observation[]>;
 };
 
-type PanoCluster = {
+export type PanoCluster = {
   panoIds: string[];
   detectionIds: string[];
   score: number;
@@ -47,7 +48,7 @@ type AutoAssignContext = {
 };
 
 const EARTH_RADIUS_M = 6371000;
-const CLUSTER_DISTANCE_M = 80;
+const DEFAULT_CLUSTER_DISTANCE_M = 80;
 const BUCKET_SIZE_DEG = 0.001;
 
 export function angleDiffDeg(a: number, b: number) {
@@ -193,11 +194,12 @@ export function createAutoAssignContext(state: AutoAssignState): AutoAssignConte
   };
 }
 
-function clusterPanos(
+export function clusterPanos(
   state: AutoAssignState,
   assigned: Set<string>,
   detectionsByPano: DetectionBuckets,
-  panoBuckets: PanoBuckets
+  panoBuckets: PanoBuckets,
+  clusterDistanceM: number
 ): PanoCluster[] {
   const panoIds = Object.keys(detectionsByPano).filter((id) =>
     (detectionsByPano[id] ?? []).some((det) => !assigned.has(det.detection_id))
@@ -233,7 +235,7 @@ function clusterPanos(
           distanceMeters(
             { lat: currentCoords.lat, lng: currentCoords.lng },
             { lat: neighborCoords.lat, lng: neighborCoords.lng }
-          ) <= CLUSTER_DISTANCE_M
+          ) <= clusterDistanceM
         ) {
           queue.push(candidate);
         }
@@ -414,7 +416,13 @@ export function seedGrowAssign(
   context: AutoAssignContext
 ): Observation[] {
   const existing = [...(state.observationsByObjectId[objectId] ?? [])];
-  const clusters = clusterPanos(state, assigned, context.detectionsByPano, context.panoBuckets);
+  const clusters = clusterPanos(
+    state,
+    assigned,
+    context.detectionsByPano,
+    context.panoBuckets,
+    config.clusterDistanceM ?? DEFAULT_CLUSTER_DISTANCE_M
+  );
   const candidateDetections = clusters
     .flatMap((cl) => cl.detectionIds)
     .map((id) => state.detectionsById[id])
