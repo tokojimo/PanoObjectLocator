@@ -423,10 +423,31 @@ export function seedGrowAssign(
     context.panoBuckets,
     config.clusterDistanceM ?? DEFAULT_CLUSTER_DISTANCE_M
   );
-  const candidateDetections = clusters
-    .flatMap((cl) => cl.detectionIds)
-    .map((id) => state.detectionsById[id])
-    .filter((det): det is Detection => Boolean(det) && !assigned.has(det.detection_id));
+
+  const detectionToCluster = new Map<string, PanoCluster>();
+  clusters.forEach((cluster) => {
+    cluster.detectionIds.forEach((id) => detectionToCluster.set(id, cluster));
+  });
+
+  const existingCluster = existing.length
+    ? detectionToCluster.get(existing[0].detection_id)
+    : undefined;
+  if (existing.length) {
+    const spansMultipleClusters = existing.some(
+      (obs) => detectionToCluster.get(obs.detection_id) !== existingCluster
+    );
+    if (spansMultipleClusters) return existing;
+  }
+
+  const getDetectionsForCluster = (cluster: PanoCluster) =>
+    cluster.detectionIds
+      .map((id) => state.detectionsById[id])
+      .filter((det): det is Detection => Boolean(det) && !assigned.has(det.detection_id));
+
+  const clustersToConsider = existingCluster ? [existingCluster] : clusters;
+  const candidateDetections = existingCluster ? getDetectionsForCluster(existingCluster) : [];
+
+  if (!clustersToConsider.length) return existing;
 
   if (existing.length >= 2) {
     const grown = growCluster(state, objectId, existing, candidateDetections, config, context);
@@ -436,8 +457,9 @@ export function seedGrowAssign(
   let best: Observation[] | undefined;
   let bestSize = existing.length;
   let bestRms = Infinity;
+  let bestCluster: PanoCluster | undefined;
 
-  clusters.forEach((cluster) => {
+  clustersToConsider.forEach((cluster) => {
     const seed = bestSeedForCluster(state, objectId, cluster, assigned, config, context);
     if (!seed) return;
     const total = [...existing, ...seed];
@@ -449,15 +471,20 @@ export function seedGrowAssign(
       best = list;
       bestSize = list.length;
       bestRms = rms;
+      bestCluster = cluster;
     }
   });
 
   if (best && best.length >= 2) return best;
-  if (existing.length >= 1 && candidateDetections.length) {
-    const pano = state.panosById[candidateDetections[0].pano_id];
-    if (pano) {
-      const obs = makeObservationFromDetection(objectId, candidateDetections[0], pano, context.geometryCache);
-      return [...existing, obs];
+  if (existing.length >= 1) {
+    const fallbackCluster = bestCluster ?? existingCluster ?? clustersToConsider[0];
+    const fallbackCandidates = fallbackCluster ? getDetectionsForCluster(fallbackCluster) : [];
+    if (fallbackCandidates.length) {
+      const pano = state.panosById[fallbackCandidates[0].pano_id];
+      if (pano) {
+        const obs = makeObservationFromDetection(objectId, fallbackCandidates[0], pano, context.geometryCache);
+        return [...existing, obs];
+      }
     }
   }
 
