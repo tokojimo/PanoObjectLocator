@@ -15,17 +15,19 @@ export function autoAssignObjects(state: AutoAssignState, objectIds: string[], c
   // Share assigned/context across the whole run to avoid redundant bucket rebuilds and
   // per-object dedup passes.
   const context = createAutoAssignContext(state);
+  const totalDetections = Object.keys(state.detectionsById).length;
   const workingState: AutoAssignState = { ...state, observationsByObjectId };
 
   Object.values(observationsByObjectId).forEach((list) => {
     list?.forEach((obs) => assigned.add(obs.detection_id));
   });
 
-  objectIds.forEach((objectId) => {
+  for (const objectId of objectIds) {
+    if (assigned.size >= totalDetections) break;
     const updated = seedGrowAssign(workingState, objectId, assigned, config, context);
     observationsByObjectId[objectId] = updated;
     updated.forEach((obs) => assigned.add(obs.detection_id));
-  });
+  }
 
   return observationsByObjectId;
 }
@@ -57,6 +59,7 @@ export async function autoAssignObjectsProgressive(
   const observationsByObjectId: Record<string, Observation[]> = { ...state.observationsByObjectId };
   const assigned = new Set<string>();
   const context = createAutoAssignContext(state);
+  const totalDetections = Object.keys(state.detectionsById).length;
   const workingState: AutoAssignState = { ...state, observationsByObjectId };
 
   Object.values(observationsByObjectId).forEach((list) => {
@@ -65,6 +68,10 @@ export async function autoAssignObjectsProgressive(
 
   for (let index = 0; index < objectIds.length; index += 1) {
     const objectId = objectIds[index];
+    if (assigned.size >= totalDetections) {
+      onProgress?.({ current: objectIds.length, total: objectIds.length, objectId });
+      break;
+    }
     const updated = seedGrowAssign(workingState, objectId, assigned, config, context);
     observationsByObjectId[objectId] = updated;
     updated.forEach((obs) => assigned.add(obs.detection_id));
