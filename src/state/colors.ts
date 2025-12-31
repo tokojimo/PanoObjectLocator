@@ -1,3 +1,4 @@
+// Keep the pano marker blue (#0ea5e9) out of the object palette.
 const palette = [
   '#f97316',
   '#22c55e',

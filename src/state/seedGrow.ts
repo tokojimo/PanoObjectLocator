@@ -29,6 +29,7 @@ type ClusterGrowth = {
 
 const EARTH_RADIUS_M = 6371000;
 const CLUSTER_DISTANCE_M = 80;
+const BUCKET_SIZE_DEG = 0.001;
 
 export function angleDiffDeg(a: number, b: number) {
   const diff = ((a - b + 540) % 360) - 180;
@@ -81,9 +82,45 @@ function buildDetectionBuckets(state: AutoAssignState, assigned: Set<string>) {
   return detectionsByPano;
 }
 
+function buildPanoBuckets(panoIds: string[], state: AutoAssignState) {
+  const buckets = new Map<string, string[]>();
+  const coords: Record<string, { lat: number; lng: number }> = {};
+
+  panoIds.forEach((panoId) => {
+    const pano = state.panosById[panoId];
+    if (!pano) return;
+    coords[panoId] = { lat: pano.lat, lng: pano.lng };
+    const latBucket = Math.floor(pano.lat / BUCKET_SIZE_DEG);
+    const lngBucket = Math.floor(pano.lng / BUCKET_SIZE_DEG);
+    const key = `${latBucket}:${lngBucket}`;
+    const list = buckets.get(key) ?? [];
+    list.push(panoId);
+    buckets.set(key, list);
+  });
+
+  const nearby = (lat: number, lng: number) => {
+    const latBucket = Math.floor(lat / BUCKET_SIZE_DEG);
+    const lngBucket = Math.floor(lng / BUCKET_SIZE_DEG);
+    const candidates: string[] = [];
+
+    for (let dLat = -1; dLat <= 1; dLat += 1) {
+      for (let dLng = -1; dLng <= 1; dLng += 1) {
+        const key = `${latBucket + dLat}:${lngBucket + dLng}`;
+        const list = buckets.get(key);
+        if (list) candidates.push(...list);
+      }
+    }
+
+    return candidates;
+  };
+
+  return { nearby, coords };
+}
+
 function clusterPanos(state: AutoAssignState, assigned: Set<string>): PanoCluster[] {
   const detectionsByPano = buildDetectionBuckets(state, assigned);
   const panoIds = Object.keys(state.panosById).filter((id) => detectionsByPano[id]?.length);
+  const { nearby, coords } = buildPanoBuckets(panoIds, state);
   const visited = new Set<string>();
   const clusters: PanoCluster[] = [];
 
@@ -92,22 +129,33 @@ function clusterPanos(state: AutoAssignState, assigned: Set<string>): PanoCluste
     const queue = [panoId];
     const panoCluster = new Set<string>();
     const detectionIds: string[] = [];
+
     while (queue.length) {
       const current = queue.shift()!;
       if (visited.has(current)) continue;
       visited.add(current);
       panoCluster.add(current);
       detectionsByPano[current]?.forEach((det) => detectionIds.push(det.detection_id));
-      panoIds.forEach((candidate) => {
-        if (visited.has(candidate) || panoCluster.has(candidate)) return;
-        const a = state.panosById[current];
-        const b = state.panosById[candidate];
-        if (!a || !b) return;
-        if (distanceMeters({ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }) <= CLUSTER_DISTANCE_M) {
+
+      const currentCoords = coords[current];
+      if (!currentCoords) continue;
+
+      const candidates = nearby(currentCoords.lat, currentCoords.lng);
+      candidates.forEach((candidate) => {
+        if (visited.has(candidate) || panoCluster.has(candidate) || candidate === current) return;
+        const neighborCoords = coords[candidate];
+        if (!neighborCoords) return;
+        if (
+          distanceMeters(
+            { lat: currentCoords.lat, lng: currentCoords.lng },
+            { lat: neighborCoords.lat, lng: neighborCoords.lng }
+          ) <= CLUSTER_DISTANCE_M
+        ) {
           queue.push(candidate);
         }
       });
     }
+
     if (panoCluster.size >= 2) {
       const panoIdsList = [...panoCluster];
       const panoWithMultipleBoxes = panoIdsList.filter((id) => (detectionsByPano[id]?.length ?? 0) >= 2).length;
@@ -121,6 +169,7 @@ function clusterPanos(state: AutoAssignState, assigned: Set<string>): PanoCluste
 
 function growCluster(
   state: AutoAssignState,
+  objectId: string,
   seed: Observation[],
   candidateDetections: Detection[],
   config: AutoAssignConfig
@@ -132,7 +181,7 @@ function growCluster(
     if (observations.length >= config.maxObsPerObject) break;
     const pano = state.panosById[det.pano_id];
     if (!pano) continue;
-    const candidate = makeObservationFromDetection(seed[0]?.object_id ?? det.pano_id, det, pano);
+    const candidate = makeObservationFromDetection(objectId, det, pano);
     if (!canUseCandidate(observations, candidate, config.minAngleDiff)) continue;
 
     const trialObservations = [...observations, candidate];
@@ -185,6 +234,7 @@ function bestSeedForCluster(
     const seed = [obsA, obsB];
     const growth = growCluster(
       state,
+      objectId,
       seed,
       cluster.detectionIds
         .map((id) => state.detectionsById[id])
@@ -216,7 +266,7 @@ export function seedGrowAssign(
     .filter((det): det is Detection => Boolean(det) && !assigned.has(det.detection_id));
 
   if (existing.length >= 2) {
-    const grown = growCluster(state, existing, candidateDetections, config);
+    const grown = growCluster(state, objectId, existing, candidateDetections, config);
     return grown.observations;
   }
 
