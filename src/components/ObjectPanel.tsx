@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { AutoAssignConfig, autoAssignObjectsProgressive } from '../state/autoAssign';
 import { selectObservationAssignments } from '../state/selectors';
 import { useStore } from '../state/store';
 
 export default function ObjectPanel() {
   const { state, dispatch } = useStore();
+  const [error, setError] = useState<string | undefined>();
   const objects = useMemo(() => Object.values(state.objectsById), [state.objectsById]);
   const assignments = useMemo(() => selectObservationAssignments(state), [state.observationsByObjectId]);
   const unassignedCount = useMemo(
@@ -18,6 +19,7 @@ export default function ObjectPanel() {
   };
 
   const runAutoAssign = async (mode: 'active' | 'all') => {
+    setError(undefined);
     const baseObjectIds = mode === 'active' && state.activeObjectId ? [state.activeObjectId] : Object.keys(state.objectsById);
     const objectIds = baseObjectIds.length ? [...baseObjectIds] : [`obj-${Object.keys(state.objectsById).length + 1}`];
     const observationsByObjectId = { ...state.observationsByObjectId };
@@ -38,8 +40,12 @@ export default function ObjectPanel() {
       );
 
       dispatch({ type: 'applyAutoAssign', payload: { observationsByObjectId: updatedObservations } });
+    } catch (err) {
+      console.error('Auto-assign failed', err);
+      const message = err instanceof Error ? err.message : 'Erreur inconnue lors de l\'auto-assign.';
+      setError(message);
     } finally {
-      dispatch({ type: 'setAutoAssignProgress', payload: undefined });
+      dispatch({ type: 'setAutoAssignProgress', payload: null });
     }
   };
 
@@ -85,6 +91,11 @@ export default function ObjectPanel() {
           </div>
           <span className="badge">Boxes libres: {unassignedCount}</span>
         </div>
+        {error && (
+          <div className="status" style={{ color: '#e11d48', marginBottom: 8 }}>
+            {error}
+          </div>
+        )}
         <div className="auto-grid">
           <label className="field">
             <div className="status">RMS_MAX (m): {state.ui.autoAssign.rmsMax}</div>
