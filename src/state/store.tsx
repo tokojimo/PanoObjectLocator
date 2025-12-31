@@ -19,6 +19,11 @@ export type UIState = {
   highlight?: { pano_id: string; detection_id: string };
   autoAssign: AutoAssignConfig;
   autoAssignProgress?: { mode: 'active' | 'all'; current: number; total: number } | null;
+  clusterPreview?: {
+    clusters: { panoIds: string[]; detectionIds: string[]; score: number }[];
+    updatedAt: string;
+    params: Pick<AutoAssignConfig, 'clusterDistanceM'>;
+  };
 };
 
 export type SaveState = {
@@ -64,7 +69,11 @@ export type AppAction =
   | { type: 'setStatus'; payload?: string }
   | { type: 'setAutoAssignConfig'; payload: Partial<AutoAssignConfig> }
   | { type: 'applyAutoAssign'; payload: { observationsByObjectId: Record<string, Observation[]> } }
-  | { type: 'setAutoAssignProgress'; payload?: { mode: 'active' | 'all'; current: number; total: number } };
+  | { type: 'setAutoAssignProgress'; payload?: { mode: 'active' | 'all'; current: number; total: number } }
+  | {
+      type: 'setClusterPreview';
+      payload?: { clusters: { panoIds: string[]; detectionIds: string[]; score: number }[]; params: Pick<AutoAssignConfig, 'clusterDistanceM'> };
+    };
 
 const initialState: AppState = {
   sources: {},
@@ -74,7 +83,14 @@ const initialState: AppState = {
   objectsById: {},
   ui: {
     openPanos: [],
-    autoAssign: { rmsMax: 2, rmsGood: 1, maxShiftM: 10, maxObsPerObject: 8, minAngleDiff: 10 },
+    autoAssign: {
+      rmsMax: 2,
+      rmsGood: 1,
+      maxShiftM: 10,
+      maxObsPerObject: 8,
+      minAngleDiff: 10,
+      clusterDistanceM: 80,
+    },
     autoAssignProgress: null,
   },
   save: { status: 'idle' },
@@ -121,7 +137,7 @@ function reducer(state: AppState, action: AppAction): AppState {
         detectionsById,
         observationsByObjectId,
         objectsById,
-        ui: { ...state.ui, openPanos: [], highlight: undefined },
+        ui: { ...state.ui, openPanos: [], highlight: undefined, clusterPreview: undefined },
         save: { status: 'idle', lastSavedAt: undefined },
       };
     }
@@ -217,6 +233,20 @@ function reducer(state: AppState, action: AppAction): AppState {
     }
     case 'setAutoAssignProgress':
       return { ...state, ui: { ...state.ui, autoAssignProgress: action.payload } };
+    case 'setClusterPreview':
+      return {
+        ...state,
+        ui: action.payload
+          ? {
+              ...state.ui,
+              clusterPreview: {
+                clusters: action.payload.clusters,
+                params: action.payload.params,
+                updatedAt: nowIso(),
+              },
+            }
+          : { ...state.ui, clusterPreview: undefined },
+      };
     default:
       return state;
   }

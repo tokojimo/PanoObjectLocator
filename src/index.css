@@ -234,6 +234,20 @@ input[type='file'] {
   border-radius: 8px;
 }
 
+.cluster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cluster-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fafc;
+}
+
 .list {
   display: grid;
   gap: 6px;
