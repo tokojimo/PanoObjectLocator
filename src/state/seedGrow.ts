@@ -142,6 +142,9 @@ function buildDetectionBuckets(state: AutoAssignState) {
     if (!detectionsByPano[det.pano_id]) detectionsByPano[det.pano_id] = [];
     detectionsByPano[det.pano_id].push(det);
   });
+  Object.values(detectionsByPano).forEach((list) =>
+    list.sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+  );
   return detectionsByPano;
 }
 
@@ -293,12 +296,18 @@ function growCluster(
     .map((det, idx) => ({ det, idx, pano: state.panosById[det.pano_id] }))
     .filter((item) => item.pano);
 
-  // Prefer nearer panos first; tie-break on original order to limit behaviour drift
-  // while cutting down the amount of growth/triangulation attempts needed.
+  // Prefer nearer panos first; tie-break on detection score, then original order to
+  // limit behaviour drift while cutting down the amount of growth/triangulation
+  // attempts needed.
   sortedCandidates.sort((a, b) => {
     const distA = getDist(a.det.pano_id, a.pano!, a.idx);
     const distB = getDist(b.det.pano_id, b.pano!, b.idx);
-    if (distA === distB) return a.idx - b.idx;
+    if (distA === distB) {
+      const scoreA = a.det.score ?? 0;
+      const scoreB = b.det.score ?? 0;
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      return a.idx - b.idx;
+    }
     return distA - distB;
   });
 
@@ -353,6 +362,13 @@ function bestSeedForCluster(
     availableDetectionsByPano.set(det.pano_id, list);
   });
 
+  availableDetectionsByPano.forEach((list, panoId) => {
+    list.sort(
+      (a, b) => (state.detectionsById[b]?.score ?? 0) - (state.detectionsById[a]?.score ?? 0)
+    );
+    availableDetectionsByPano.set(panoId, list);
+  });
+
   cluster.panoIds.forEach((panoA, idx) => {
     const detsA = availableDetectionsByPano.get(panoA) ?? [];
     cluster.panoIds.slice(idx + 1).forEach((panoB) => {
@@ -376,7 +392,8 @@ function bestSeedForCluster(
   const availableDetections = cluster.panoIds
     .flatMap((panoId) => availableDetectionsByPano.get(panoId) ?? [])
     .map((id) => state.detectionsById[id])
-    .filter((det): det is Detection => Boolean(det));
+    .filter((det): det is Detection => Boolean(det))
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
   for (const [a, b] of seedPairs) {
     const panoA = state.panosById[a.pano_id];
@@ -442,7 +459,8 @@ export function seedGrowAssign(
   const getDetectionsForCluster = (cluster: PanoCluster) =>
     cluster.detectionIds
       .map((id) => state.detectionsById[id])
-      .filter((det): det is Detection => Boolean(det) && !assigned.has(det.detection_id));
+      .filter((det): det is Detection => Boolean(det) && !assigned.has(det.detection_id))
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
   const clustersToConsider = existingCluster ? [existingCluster] : clusters;
   const candidateDetections = existingCluster ? getDetectionsForCluster(existingCluster) : [];
