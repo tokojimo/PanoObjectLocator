@@ -240,9 +240,9 @@ export default function ObjectPanel() {
             <div className="field-controls">
               <input
                 type="range"
-                min={10}
-                max={300}
-                step={5}
+                min={1}
+                max={400}
+                step={1}
                 value={state.ui.autoAssign.clusterDistanceM}
                 onChange={(e) => handleConfigChange('clusterDistanceM', Number(e.target.value))}
               />
@@ -250,7 +250,7 @@ export default function ObjectPanel() {
                 type="number"
                 min={0}
                 max={500}
-                step={5}
+                step={1}
                 value={state.ui.autoAssign.clusterDistanceM}
                 onChange={(e) => handleConfigChange('clusterDistanceM', Number(e.target.value))}
               />
@@ -321,6 +321,15 @@ export default function ObjectPanel() {
             </div>
           )}
         </div>
+        <label className="status" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
+          <input
+            type="checkbox"
+            checked={state.ui.showClusterOverlay}
+            disabled={!state.ui.clusterPreview}
+            onChange={(e) => dispatch({ type: 'setShowClusterOverlay', payload: e.target.checked })}
+          />
+          Afficher les clusters sur la carte
+        </label>
         {state.ui.clusterPreview && (
           <div className="cluster-grid">
             {state.ui.clusterPreview.clusters.slice(0, 20).map((cluster, idx) => (
