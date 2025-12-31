@@ -9,6 +9,7 @@ export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const panoLayerRef = useRef<L.LayerGroup | null>(null);
   const objectLayerRef = useRef<L.LayerGroup | null>(null);
+  const rayLayerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {
     if (mapRef.current || !containerRef.current) return;
@@ -18,6 +19,7 @@ export default function MapView() {
     }).addTo(mapRef.current);
     panoLayerRef.current = L.layerGroup().addTo(mapRef.current);
     objectLayerRef.current = L.layerGroup().addTo(mapRef.current);
+    rayLayerRef.current = L.layerGroup().addTo(mapRef.current);
   }, []);
 
   useEffect(() => {
@@ -47,9 +49,12 @@ export default function MapView() {
   }, [state.panosById, state.objectsById, dispatch, state.observationsByObjectId]);
 
   useEffect(() => {
-    if (!mapRef.current || !objectLayerRef.current) return;
+    if (!mapRef.current || !objectLayerRef.current || !rayLayerRef.current) return;
     const layer = objectLayerRef.current;
+    const rayLayer = rayLayerRef.current;
     layer.clearLayers();
+    rayLayer.clearLayers();
+
     Object.values(state.objectsById).forEach((obj) => {
       if (obj.obj_lat === undefined || obj.obj_lng === undefined) return;
       const marker = L.circleMarker([obj.obj_lat, obj.obj_lng], {
@@ -59,8 +64,25 @@ export default function MapView() {
         weight: 2,
       }).addTo(layer);
       marker.bindTooltip(`${obj.object_id} • ${obj.n_obs} obs${obj.rms_m ? ` • RMS ${obj.rms_m.toFixed(1)}m` : ''}`);
+
+      const observations = state.observationsByObjectId[obj.object_id] ?? [];
+      observations.forEach((obs) => {
+        const pano = state.panosById[obs.pano_id];
+        if (!pano) return;
+        L.polyline(
+          [
+            [pano.lat, pano.lng],
+            [obj.obj_lat!, obj.obj_lng!],
+          ],
+          {
+            color: obj.color,
+            weight: 2,
+            opacity: 0.9,
+          }
+        ).addTo(rayLayer);
+      });
     });
-  }, [state.objectsById]);
+  }, [state.objectsById, state.observationsByObjectId, state.panosById]);
 
   return <div ref={containerRef} className="map-container" />;
 }

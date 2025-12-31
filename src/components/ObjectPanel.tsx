@@ -60,7 +60,7 @@ export default function ObjectPanel() {
         </div>
         <div className="auto-grid">
           <label className="field">
-            <div className="status">RMS max (m): {state.ui.autoAssign.rmsMax}</div>
+            <div className="status">RMS_MAX (m): {state.ui.autoAssign.rmsMax}</div>
             <div className="field-controls">
               <input
                 type="range"
@@ -80,7 +80,28 @@ export default function ObjectPanel() {
             </div>
           </label>
           <label className="field">
-            <div className="status">Max obs / objet: {state.ui.autoAssign.maxObsPerObject}</div>
+            <div className="status">MAX_SHIFT_M (m): {state.ui.autoAssign.maxShiftM}</div>
+            <div className="field-controls">
+              <input
+                type="range"
+                min={0}
+                max={50}
+                step={0.5}
+                value={state.ui.autoAssign.maxShiftM}
+                onChange={(e) => handleConfigChange('maxShiftM', Number(e.target.value))}
+              />
+              <input
+                type="number"
+                min={0}
+                max={200}
+                step={0.5}
+                value={state.ui.autoAssign.maxShiftM}
+                onChange={(e) => handleConfigChange('maxShiftM', Number(e.target.value))}
+              />
+            </div>
+          </label>
+          <label className="field">
+            <div className="status">MAX_OBS_PER_OBJECT: {state.ui.autoAssign.maxObsPerObject}</div>
             <div className="field-controls">
               <input
                 type="range"
@@ -101,7 +122,7 @@ export default function ObjectPanel() {
             </div>
           </label>
           <label className="field">
-            <div className="status">Angle min (°): {state.ui.autoAssign.minAngleDiff}</div>
+            <div className="status">MIN_ANGLE_DIFF (°): {state.ui.autoAssign.minAngleDiff}</div>
             <div className="field-controls">
               <input
                 type="range"
@@ -128,7 +149,7 @@ export default function ObjectPanel() {
             onClick={() => dispatch({ type: 'autoAssignActiveObject' })}
             disabled={!state.activeObjectId || !hasDetections}
           >
-            Auto (objet actif)
+            Auto-assign (objet actif)
           </button>
           <button
             type="button"
@@ -136,7 +157,7 @@ export default function ObjectPanel() {
             onClick={() => dispatch({ type: 'autoAssignAllObjects' })}
             disabled={!hasObjects || !hasDetections}
           >
-            Auto (tous objets)
+            Auto-assign (tous les objets)
           </button>
         </div>
       </div>

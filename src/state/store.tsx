@@ -73,7 +73,7 @@ const initialState: AppState = {
   objectsById: {},
   ui: {
     openPanos: [],
-    autoAssign: { rmsMax: 2, maxObsPerObject: 8, minAngleDiff: 10 },
+    autoAssign: { rmsMax: 2, maxShiftM: 10, maxObsPerObject: 8, minAngleDiff: 10 },
   },
   save: { status: 'idle' },
 };
