@@ -52,7 +52,11 @@ export async function autoAssignObjectsProgressive(
     updated.forEach((obs) => assigned.add(obs.detection_id));
 
     onProgress?.({ current: index + 1, total: objectIds.length, objectId });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Yield back to the event loop without using nested timers (which quickly hit the
+    // 4ms clamping threshold in browsers after five iterations and slow the run down).
+    // A microtask lets React flush progress updates while keeping per-object overhead
+    // effectively zero.
+    await Promise.resolve();
   }
 
   return observationsByObjectId;
