@@ -5,6 +5,7 @@ import { makeObservationId } from '../utils/ids';
 import { nowIso } from '../utils/time';
 export type AutoAssignConfig = {
   rmsMax: number;
+  rmsGood: number;
   maxShiftM: number;
   minAngleDiff: number;
   maxObsPerObject: number;
@@ -270,6 +271,22 @@ function growCluster(
     stable: Boolean(currentResult),
   };
 
+  const panoDistanceCache = new Map<string, number>();
+  const getDist = (panoId: string, pano: Pano, idx: number) => {
+    const cached = panoDistanceCache.get(panoId);
+    if (cached !== undefined) return cached;
+
+    const dist =
+      currentCenter?.lat !== undefined && currentCenter?.lng !== undefined
+        ? distanceMeters(
+            { lat: currentCenter.lat ?? pano.lat, lng: currentCenter.lng ?? pano.lng },
+            { lat: pano.lat, lng: pano.lng }
+          )
+        : idx;
+    panoDistanceCache.set(panoId, dist);
+    return dist;
+  };
+
   const sortedCandidates = candidateDetections
     .map((det, idx) => ({ det, idx, pano: state.panosById[det.pano_id] }))
     .filter((item) => item.pano);
@@ -277,18 +294,8 @@ function growCluster(
   // Prefer nearer panos first; tie-break on original order to limit behaviour drift
   // while cutting down the amount of growth/triangulation attempts needed.
   sortedCandidates.sort((a, b) => {
-    const distA = currentCenter?.lat !== undefined && currentCenter?.lng !== undefined
-      ? distanceMeters(
-          { lat: currentCenter.lat ?? a.pano!.lat, lng: currentCenter.lng ?? a.pano!.lng },
-          { lat: a.pano!.lat, lng: a.pano!.lng }
-        )
-      : a.idx;
-    const distB = currentCenter?.lat !== undefined && currentCenter?.lng !== undefined
-      ? distanceMeters(
-          { lat: currentCenter.lat ?? b.pano!.lat, lng: currentCenter.lng ?? b.pano!.lng },
-          { lat: b.pano!.lat, lng: b.pano!.lng }
-        )
-      : b.idx;
+    const distA = getDist(a.det.pano_id, a.pano!, a.idx);
+    const distB = getDist(b.det.pano_id, b.pano!, b.idx);
     if (distA === distB) return a.idx - b.idx;
     return distA - distB;
   });
@@ -312,6 +319,7 @@ function growCluster(
     observations.push(candidate);
     currentResult = result;
     currentCenter = result;
+    panoDistanceCache.clear();
 
     // Early exit: the greedy search cannot improve past these bounds without changing
     // thresholds, so stop evaluating remaining candidates once the cluster is full or
@@ -333,12 +341,28 @@ function bestSeedForCluster(
 ): Observation[] | undefined {
   const seedPairs: [Detection, Detection][] = [];
 
+  const availableDetectionsByPano = new Map<string, string[]>();
+  cluster.detectionIds.forEach((detectionId) => {
+    if (assigned.has(detectionId)) return;
+    const det = state.detectionsById[detectionId];
+    if (!det) return;
+    const list = availableDetectionsByPano.get(det.pano_id) ?? [];
+    list.push(detectionId);
+    availableDetectionsByPano.set(det.pano_id, list);
+  });
+
   cluster.panoIds.forEach((panoA, idx) => {
-    const detsA = context.detectionsByPano[panoA] ?? [];
+    const detsA = availableDetectionsByPano.get(panoA) ?? [];
     cluster.panoIds.slice(idx + 1).forEach((panoB) => {
-      const detsB = context.detectionsByPano[panoB] ?? [];
-      detsA.slice(0, 3).forEach((da) => {
-        detsB.slice(0, 3).forEach((db) => seedPairs.push([da, db]));
+      const detsB = availableDetectionsByPano.get(panoB) ?? [];
+      detsA.slice(0, 3).forEach((daId) => {
+        const da = state.detectionsById[daId];
+        if (!da) return;
+        detsB.slice(0, 3).forEach((dbId) => {
+          const db = state.detectionsById[dbId];
+          if (!db) return;
+          seedPairs.push([da, db]);
+        });
       });
     });
   });
@@ -346,6 +370,11 @@ function bestSeedForCluster(
   let best: Observation[] | undefined;
   let bestSize = 0;
   let bestRms = Infinity;
+
+  const availableDetections = cluster.panoIds
+    .flatMap((panoId) => availableDetectionsByPano.get(panoId) ?? [])
+    .map((id) => state.detectionsById[id])
+    .filter((det): det is Detection => Boolean(det));
 
   for (const [a, b] of seedPairs) {
     const panoA = state.panosById[a.pano_id];
@@ -358,9 +387,7 @@ function bestSeedForCluster(
       state,
       objectId,
       seed,
-      cluster.detectionIds
-        .map((id) => state.detectionsById[id])
-        .filter((det): det is Detection => Boolean(det) && !assigned.has(det.detection_id)),
+      availableDetections,
       config,
       context
     );
@@ -373,7 +400,7 @@ function bestSeedForCluster(
       bestRms = growth.rms;
     }
 
-    if (bestSize >= config.maxObsPerObject && bestRms <= config.rmsMax / 2) break;
+    if (bestSize >= config.maxObsPerObject && bestRms <= config.rmsGood) break;
   }
 
   return best;

@@ -107,6 +107,26 @@ export default function ObjectPanel() {
             </div>
           </label>
           <label className="field">
+            <div className="status">RMS_GOOD (m): {state.ui.autoAssign.rmsGood}</div>
+            <div className="field-controls">
+              <input
+                type="range"
+                min={0.1}
+                max={10}
+                step={0.1}
+                value={state.ui.autoAssign.rmsGood}
+                onChange={(e) => handleConfigChange('rmsGood', Number(e.target.value))}
+              />
+              <input
+                type="number"
+                min={0.1}
+                step={0.1}
+                value={state.ui.autoAssign.rmsGood}
+                onChange={(e) => handleConfigChange('rmsGood', Number(e.target.value))}
+              />
+            </div>
+          </label>
+          <label className="field">
             <div className="status">MAX_SHIFT_M (m): {state.ui.autoAssign.maxShiftM}</div>
             <div className="field-controls">
               <input
