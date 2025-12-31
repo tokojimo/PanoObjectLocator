@@ -1,14 +1,14 @@
 const palette = [
-  '#0ea5e9',
   '#f97316',
   '#22c55e',
-  '#6366f1',
   '#e11d48',
   '#14b8a6',
   '#a855f7',
   '#facc15',
   '#ef4444',
-  '#0ea5e9',
+  '#8b5cf6',
+  '#d946ef',
+  '#84cc16',
 ];
 
 export function buildColorMap(objectIds: string[]) {
