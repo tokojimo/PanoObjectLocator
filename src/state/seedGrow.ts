@@ -1,5 +1,5 @@
 import { bearingFromBox } from '../geo/bearing';
-import { triangulate } from '../geo/triangulation';
+import { triangulate, TriangulationResult } from '../geo/triangulation';
 import { Detection, Observation, Pano } from '../types';
 import { makeObservationId } from '../utils/ids';
 import { nowIso } from '../utils/time';
@@ -25,6 +25,24 @@ type PanoCluster = {
 type ClusterGrowth = {
   observations: Observation[];
   rms: number;
+};
+
+type DetectionBuckets = Record<string, Detection[]>;
+type PanoBuckets = ReturnType<typeof buildPanoBuckets>;
+type ObservationGeometry = {
+  cx: number;
+  bearing_deg: number;
+  pano_lat: number;
+  pano_lng: number;
+};
+
+type ObservationGeometryCache = Map<string, ObservationGeometry>;
+type TriangulationCache = Map<string, TriangulationResult | null>;
+type AutoAssignContext = {
+  detectionsByPano: DetectionBuckets;
+  panoBuckets: PanoBuckets;
+  geometryCache: ObservationGeometryCache;
+  triangulationCache: TriangulationCache;
 };
 
 const EARTH_RADIUS_M = 6371000;
@@ -53,8 +71,32 @@ function canUseCandidate(existing: Observation[], candidate: Observation, minAng
   return existing.every((obs) => angleDiffDeg(obs.bearing_deg, candidate.bearing_deg) >= minAngleDiff);
 }
 
-function makeObservationFromDetection(objectId: string, detection: Detection, pano: Pano): Observation {
+function getObservationGeometry(
+  detection: Detection,
+  pano: Pano,
+  cache: ObservationGeometryCache
+): ObservationGeometry {
+  const cached = cache.get(detection.detection_id);
+  if (cached) return cached;
+
   const { bearing, cx } = bearingFromBox(detection.xmin, detection.xmax, pano.imageWidth, pano.heading);
+  const geometry: ObservationGeometry = {
+    cx,
+    bearing_deg: bearing,
+    pano_lat: pano.lat,
+    pano_lng: pano.lng,
+  };
+  cache.set(detection.detection_id, geometry);
+  return geometry;
+}
+
+function makeObservationFromDetection(
+  objectId: string,
+  detection: Detection,
+  pano: Pano,
+  cache: ObservationGeometryCache
+): Observation {
+  const { bearing_deg, cx, pano_lat, pano_lng } = getObservationGeometry(detection, pano, cache);
   return {
     obs_id: makeObservationId(),
     object_id: objectId,
@@ -65,17 +107,36 @@ function makeObservationFromDetection(objectId: string, detection: Detection, pa
     xmax: detection.xmax,
     ymax: detection.ymax,
     cx,
-    bearing_deg: bearing,
-    pano_lat: pano.lat,
-    pano_lng: pano.lng,
+    bearing_deg,
+    pano_lat,
+    pano_lng,
     created_at: nowIso(),
   };
 }
 
-function buildDetectionBuckets(state: AutoAssignState, assigned: Set<string>) {
+function triangulateWithCache(
+  observations: Observation[],
+  cache: TriangulationCache
+): TriangulationResult | undefined {
+  // Triangulation is pure on detection_id order; cache by ids to avoid recomputing
+  // identical sets while seeds/clusters iterate.
+  const ids = observations
+    .map((obs) => obs.detection_id)
+    .filter(Boolean)
+    .sort()
+    .join('|');
+
+  const cached = cache.get(ids);
+  if (cached !== undefined) return cached ?? undefined;
+
+  const result = triangulate(observations) ?? null;
+  cache.set(ids, result);
+  return result ?? undefined;
+}
+
+function buildDetectionBuckets(state: AutoAssignState) {
   const detectionsByPano: Record<string, Detection[]> = {};
   Object.values(state.detectionsById).forEach((det) => {
-    if (assigned.has(det.detection_id)) return;
     if (!detectionsByPano[det.pano_id]) detectionsByPano[det.pano_id] = [];
     detectionsByPano[det.pano_id].push(det);
   });
@@ -117,10 +178,30 @@ function buildPanoBuckets(panoIds: string[], state: AutoAssignState) {
   return { nearby, coords };
 }
 
-function clusterPanos(state: AutoAssignState, assigned: Set<string>): PanoCluster[] {
-  const detectionsByPano = buildDetectionBuckets(state, assigned);
-  const panoIds = Object.keys(state.panosById).filter((id) => detectionsByPano[id]?.length);
-  const { nearby, coords } = buildPanoBuckets(panoIds, state);
+export function createAutoAssignContext(state: AutoAssignState): AutoAssignContext {
+  // Build pano/detection buckets once per auto-assign run to avoid repeated O(n)
+  // scans across panos and detections in clusterPanos / bestSeedForCluster.
+  const detectionsByPano = buildDetectionBuckets(state);
+  const panoIds = Object.keys(detectionsByPano);
+
+  return {
+    detectionsByPano,
+    panoBuckets: buildPanoBuckets(panoIds, state),
+    geometryCache: new Map(),
+    triangulationCache: new Map(),
+  };
+}
+
+function clusterPanos(
+  state: AutoAssignState,
+  assigned: Set<string>,
+  detectionsByPano: DetectionBuckets,
+  panoBuckets: PanoBuckets
+): PanoCluster[] {
+  const panoIds = Object.keys(detectionsByPano).filter((id) =>
+    (detectionsByPano[id] ?? []).some((det) => !assigned.has(det.detection_id))
+  );
+  const { nearby, coords } = panoBuckets;
   const visited = new Set<string>();
   const clusters: PanoCluster[] = [];
 
@@ -135,7 +216,9 @@ function clusterPanos(state: AutoAssignState, assigned: Set<string>): PanoCluste
       if (visited.has(current)) continue;
       visited.add(current);
       panoCluster.add(current);
-      detectionsByPano[current]?.forEach((det) => detectionIds.push(det.detection_id));
+      detectionsByPano[current]?.forEach((det) => {
+        if (!assigned.has(det.detection_id)) detectionIds.push(det.detection_id);
+      });
 
       const currentCoords = coords[current];
       if (!currentCoords) continue;
@@ -158,7 +241,9 @@ function clusterPanos(state: AutoAssignState, assigned: Set<string>): PanoCluste
 
     if (panoCluster.size >= 2) {
       const panoIdsList = [...panoCluster];
-      const panoWithMultipleBoxes = panoIdsList.filter((id) => (detectionsByPano[id]?.length ?? 0) >= 2).length;
+      const panoWithMultipleBoxes = panoIdsList.filter((id) =>
+        (detectionsByPano[id] ?? []).filter((det) => !assigned.has(det.detection_id)).length >= 2
+      ).length;
       const score = detectionIds.length + panoWithMultipleBoxes * 2 + panoIdsList.length;
       clusters.push({ panoIds: panoIdsList, detectionIds, score });
     }
@@ -172,20 +257,50 @@ function growCluster(
   objectId: string,
   seed: Observation[],
   candidateDetections: Detection[],
-  config: AutoAssignConfig
+  config: AutoAssignConfig,
+  context: AutoAssignContext
 ): ClusterGrowth {
   const observations = [...seed];
-  let currentResult = triangulate(observations) ?? undefined;
+  let currentResult = triangulateWithCache(observations, context.triangulationCache) ?? undefined;
+  let currentCenter = currentResult ?? {
+    lat: observations[0]?.pano_lat,
+    lng: observations[0]?.pano_lng,
+    rms: currentResult?.rms ?? 0,
+    n_obs: observations.length,
+    stable: Boolean(currentResult),
+  };
 
-  for (const det of candidateDetections) {
+  const sortedCandidates = candidateDetections
+    .map((det, idx) => ({ det, idx, pano: state.panosById[det.pano_id] }))
+    .filter((item) => item.pano);
+
+  // Prefer nearer panos first; tie-break on original order to limit behaviour drift
+  // while cutting down the amount of growth/triangulation attempts needed.
+  sortedCandidates.sort((a, b) => {
+    const distA = currentCenter?.lat !== undefined && currentCenter?.lng !== undefined
+      ? distanceMeters(
+          { lat: currentCenter.lat ?? a.pano!.lat, lng: currentCenter.lng ?? a.pano!.lng },
+          { lat: a.pano!.lat, lng: a.pano!.lng }
+        )
+      : a.idx;
+    const distB = currentCenter?.lat !== undefined && currentCenter?.lng !== undefined
+      ? distanceMeters(
+          { lat: currentCenter.lat ?? b.pano!.lat, lng: currentCenter.lng ?? b.pano!.lng },
+          { lat: b.pano!.lat, lng: b.pano!.lng }
+        )
+      : b.idx;
+    if (distA === distB) return a.idx - b.idx;
+    return distA - distB;
+  });
+
+  for (const { det, pano, idx } of sortedCandidates) {
     if (observations.length >= config.maxObsPerObject) break;
-    const pano = state.panosById[det.pano_id];
     if (!pano) continue;
-    const candidate = makeObservationFromDetection(objectId, det, pano);
+    const candidate = makeObservationFromDetection(objectId, det, pano, context.geometryCache);
     if (!canUseCandidate(observations, candidate, config.minAngleDiff)) continue;
 
     const trialObservations = [...observations, candidate];
-    const result = triangulate(trialObservations);
+    const result = triangulateWithCache(trialObservations, context.triangulationCache);
     if (!result) continue;
 
     const shift = currentResult
@@ -196,6 +311,13 @@ function growCluster(
 
     observations.push(candidate);
     currentResult = result;
+    currentCenter = result;
+
+    // Early exit: the greedy search cannot improve past these bounds without changing
+    // thresholds, so stop evaluating remaining candidates once the cluster is full or
+    // already stable enough.
+    if (currentResult.rms <= config.rmsMax && observations.length === config.maxObsPerObject) break;
+    if (idx > config.maxObsPerObject * 3 && currentResult.rms <= config.rmsMax / 2) break;
   }
 
   return { observations, rms: currentResult?.rms ?? 0 };
@@ -206,15 +328,15 @@ function bestSeedForCluster(
   objectId: string,
   cluster: PanoCluster,
   assigned: Set<string>,
-  config: AutoAssignConfig
+  config: AutoAssignConfig,
+  context: AutoAssignContext
 ): Observation[] | undefined {
-  const detectionsByPano = buildDetectionBuckets(state, assigned);
   const seedPairs: [Detection, Detection][] = [];
 
   cluster.panoIds.forEach((panoA, idx) => {
-    const detsA = detectionsByPano[panoA] ?? [];
+    const detsA = context.detectionsByPano[panoA] ?? [];
     cluster.panoIds.slice(idx + 1).forEach((panoB) => {
-      const detsB = detectionsByPano[panoB] ?? [];
+      const detsB = context.detectionsByPano[panoB] ?? [];
       detsA.slice(0, 3).forEach((da) => {
         detsB.slice(0, 3).forEach((db) => seedPairs.push([da, db]));
       });
@@ -229,8 +351,8 @@ function bestSeedForCluster(
     const panoA = state.panosById[a.pano_id];
     const panoB = state.panosById[b.pano_id];
     if (!panoA || !panoB) continue;
-    const obsA = makeObservationFromDetection(objectId, a, panoA);
-    const obsB = makeObservationFromDetection(objectId, b, panoB);
+    const obsA = makeObservationFromDetection(objectId, a, panoA, context.geometryCache);
+    const obsB = makeObservationFromDetection(objectId, b, panoB, context.geometryCache);
     const seed = [obsA, obsB];
     const growth = growCluster(
       state,
@@ -239,14 +361,19 @@ function bestSeedForCluster(
       cluster.detectionIds
         .map((id) => state.detectionsById[id])
         .filter((det): det is Detection => Boolean(det) && !assigned.has(det.detection_id)),
-      config
+      config,
+      context
     );
-    if (growth.observations.length > bestSize ||
-        (growth.observations.length === bestSize && growth.rms < bestRms)) {
+    if (
+      growth.observations.length > bestSize ||
+      (growth.observations.length === bestSize && growth.rms < bestRms)
+    ) {
       best = growth.observations;
       bestSize = growth.observations.length;
       bestRms = growth.rms;
     }
+
+    if (bestSize >= config.maxObsPerObject && bestRms <= config.rmsMax / 2) break;
   }
 
   return best;
@@ -256,17 +383,18 @@ export function seedGrowAssign(
   state: AutoAssignState,
   objectId: string,
   assigned: Set<string>,
-  config: AutoAssignConfig
+  config: AutoAssignConfig,
+  context: AutoAssignContext
 ): Observation[] {
   const existing = [...(state.observationsByObjectId[objectId] ?? [])];
-  const clusters = clusterPanos(state, assigned);
+  const clusters = clusterPanos(state, assigned, context.detectionsByPano, context.panoBuckets);
   const candidateDetections = clusters
     .flatMap((cl) => cl.detectionIds)
     .map((id) => state.detectionsById[id])
     .filter((det): det is Detection => Boolean(det) && !assigned.has(det.detection_id));
 
   if (existing.length >= 2) {
-    const grown = growCluster(state, objectId, existing, candidateDetections, config);
+    const grown = growCluster(state, objectId, existing, candidateDetections, config, context);
     return grown.observations;
   }
 
@@ -275,12 +403,12 @@ export function seedGrowAssign(
   let bestRms = Infinity;
 
   clusters.forEach((cluster) => {
-    const seed = bestSeedForCluster(state, objectId, cluster, assigned, config);
+    const seed = bestSeedForCluster(state, objectId, cluster, assigned, config, context);
     if (!seed) return;
     const total = [...existing, ...seed];
     const unique = new Map(total.map((o) => [o.detection_id, o]));
     const list = [...unique.values()];
-    const result = triangulate(list);
+    const result = triangulateWithCache(list, context.triangulationCache);
     const rms = result?.rms ?? 0;
     if (list.length > bestSize || (list.length === bestSize && rms < bestRms)) {
       best = list;
@@ -293,7 +421,7 @@ export function seedGrowAssign(
   if (existing.length >= 1 && candidateDetections.length) {
     const pano = state.panosById[candidateDetections[0].pano_id];
     if (pano) {
-      const obs = makeObservationFromDetection(objectId, candidateDetections[0], pano);
+      const obs = makeObservationFromDetection(objectId, candidateDetections[0], pano, context.geometryCache);
       return [...existing, obs];
     }
   }
