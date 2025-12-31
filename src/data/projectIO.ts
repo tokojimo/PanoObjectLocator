@@ -139,7 +139,7 @@ export async function loadProject(handle: FileSystemFileHandle | File) {
     if (String(row.row_type).toUpperCase() === 'OBJ') {
       const obj: ProjectObject = {
         object_id: String(row.object_id),
-        color: String(row.color ?? '#0ea5e9'),
+        color: String(row.color ?? '#f97316'),
         obj_lat: row.obj_lat as number | undefined,
         obj_lng: row.obj_lng as number | undefined,
         n_obs: Number(row.n_obs ?? 0),

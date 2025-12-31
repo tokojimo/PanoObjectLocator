@@ -63,7 +63,7 @@ button {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   padding: 8px 12px;
-  background: #0ea5e9;
+  background: #f97316;
   color: white;
   cursor: pointer;
   transition: transform 120ms ease, box-shadow 120ms ease;
@@ -81,7 +81,7 @@ button:disabled {
 
 button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 8px 16px rgba(14, 165, 233, 0.2);
+  box-shadow: 0 8px 16px rgba(249, 115, 22, 0.2);
 }
 
 input[type='file'] {
@@ -193,7 +193,35 @@ input[type='file'] {
 
 .todo-slider input[type='range'] {
   flex: 1;
-  accent-color: #0ea5e9;
+  accent-color: #f97316;
+}
+
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 10px;
+  appearance: none;
+}
+
+.progress-bar::-webkit-progress-bar {
+  background-color: #e2e8f0;
+  border-radius: 999px;
+}
+
+.progress-bar::-webkit-progress-value {
+  background-color: #f97316;
+  border-radius: 999px;
+}
+
+.progress-bar::-moz-progress-bar {
+  background-color: #f97316;
+  border-radius: 999px;
 }
 
 .todo-list {
