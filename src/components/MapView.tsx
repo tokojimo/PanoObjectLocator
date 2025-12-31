@@ -10,6 +10,7 @@ export default function MapView() {
   const panoLayerRef = useRef<L.LayerGroup | null>(null);
   const objectLayerRef = useRef<L.LayerGroup | null>(null);
   const rayLayerRef = useRef<L.LayerGroup | null>(null);
+  const clusterLayerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {
     if (mapRef.current || !containerRef.current) return;
@@ -20,6 +21,7 @@ export default function MapView() {
     panoLayerRef.current = L.layerGroup().addTo(mapRef.current);
     objectLayerRef.current = L.layerGroup().addTo(mapRef.current);
     rayLayerRef.current = L.layerGroup().addTo(mapRef.current);
+    clusterLayerRef.current = L.layerGroup().addTo(mapRef.current);
   }, []);
 
   useEffect(() => {
@@ -83,6 +85,33 @@ export default function MapView() {
       });
     });
   }, [state.objectsById, state.observationsByObjectId, state.panosById]);
+
+  useEffect(() => {
+    if (!mapRef.current || !clusterLayerRef.current) return;
+    const layer = clusterLayerRef.current;
+    layer.clearLayers();
+
+    if (!state.ui.clusterPreview || !state.ui.showClusterOverlay) return;
+
+    const palette = (idx: number) => `hsl(${(idx * 53) % 360}, 82%, 46%)`;
+
+    state.ui.clusterPreview.clusters.forEach((cluster, idx) => {
+      const color = palette(idx);
+      cluster.panoIds.forEach((panoId) => {
+        const pano = state.panosById[panoId];
+        if (!pano) return;
+        const marker = L.circleMarker([pano.lat, pano.lng], {
+          radius: 7,
+          color,
+          fillColor: color,
+          fillOpacity: 0.75,
+          weight: 2,
+          opacity: 0.9,
+        }).addTo(layer);
+        marker.bindTooltip(`Cluster #${idx + 1} • ${cluster.detectionIds.length} boxes libres`);
+      });
+    });
+  }, [state.panosById, state.ui.clusterPreview, state.ui.showClusterOverlay]);
 
   return <div ref={containerRef} className="map-container" />;
 }

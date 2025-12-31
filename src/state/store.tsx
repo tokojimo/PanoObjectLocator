@@ -24,6 +24,7 @@ export type UIState = {
     updatedAt: string;
     params: Pick<AutoAssignConfig, 'clusterDistanceM'>;
   };
+  showClusterOverlay: boolean;
 };
 
 export type SaveState = {
@@ -73,7 +74,8 @@ export type AppAction =
   | {
       type: 'setClusterPreview';
       payload?: { clusters: { panoIds: string[]; detectionIds: string[]; score: number }[]; params: Pick<AutoAssignConfig, 'clusterDistanceM'> };
-    };
+    }
+  | { type: 'setShowClusterOverlay'; payload: boolean };
 
 const initialState: AppState = {
   sources: {},
@@ -92,6 +94,7 @@ const initialState: AppState = {
       clusterDistanceM: 80,
     },
     autoAssignProgress: null,
+    showClusterOverlay: false,
   },
   save: { status: 'idle' },
 };
@@ -137,7 +140,7 @@ function reducer(state: AppState, action: AppAction): AppState {
         detectionsById,
         observationsByObjectId,
         objectsById,
-        ui: { ...state.ui, openPanos: [], highlight: undefined, clusterPreview: undefined },
+        ui: { ...state.ui, openPanos: [], highlight: undefined, clusterPreview: undefined, showClusterOverlay: false },
         save: { status: 'idle', lastSavedAt: undefined },
       };
     }
@@ -244,9 +247,12 @@ function reducer(state: AppState, action: AppAction): AppState {
                 params: action.payload.params,
                 updatedAt: nowIso(),
               },
+              showClusterOverlay: true,
             }
-          : { ...state.ui, clusterPreview: undefined },
+          : { ...state.ui, clusterPreview: undefined, showClusterOverlay: false },
       };
+    case 'setShowClusterOverlay':
+      return { ...state, ui: { ...state.ui, showClusterOverlay: action.payload } };
     default:
       return state;
   }
