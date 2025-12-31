@@ -1,4 +1,4 @@
-import { seedGrowAssign } from './seedGrow';
+import { createAutoAssignContext, seedGrowAssign } from './seedGrow';
 import type { AutoAssignState, AutoAssignConfig } from './seedGrow';
 export type { AutoAssignConfig } from './seedGrow';
 import type { Observation } from '../types';
@@ -12,18 +12,19 @@ export type AutoAssignProgressHandler = (progress: {
 export function autoAssignObjects(state: AutoAssignState, objectIds: string[], config: AutoAssignConfig) {
   const observationsByObjectId: Record<string, Observation[]> = { ...state.observationsByObjectId };
   const assigned = new Set<string>();
+  // Share assigned/context across the whole run to avoid redundant bucket rebuilds and
+  // per-object dedup passes.
+  const context = createAutoAssignContext(state);
+  const workingState: AutoAssignState = { ...state, observationsByObjectId };
 
   Object.values(observationsByObjectId).forEach((list) => {
     list?.forEach((obs) => assigned.add(obs.detection_id));
   });
 
   objectIds.forEach((objectId) => {
-    const updated = seedGrowAssign({ ...state, observationsByObjectId }, objectId, assigned, config);
-    const merged = [...(observationsByObjectId[objectId] ?? []), ...updated];
-    const deduped = new Map(merged.map((obs) => [obs.detection_id, obs]));
-
-    observationsByObjectId[objectId] = Array.from(deduped.values());
-    observationsByObjectId[objectId].forEach((obs) => assigned.add(obs.detection_id));
+    const updated = seedGrowAssign(workingState, objectId, assigned, config, context);
+    observationsByObjectId[objectId] = updated;
+    updated.forEach((obs) => assigned.add(obs.detection_id));
   });
 
   return observationsByObjectId;
@@ -37,6 +38,8 @@ export async function autoAssignObjectsProgressive(
 ) {
   const observationsByObjectId: Record<string, Observation[]> = { ...state.observationsByObjectId };
   const assigned = new Set<string>();
+  const context = createAutoAssignContext(state);
+  const workingState: AutoAssignState = { ...state, observationsByObjectId };
 
   Object.values(observationsByObjectId).forEach((list) => {
     list?.forEach((obs) => assigned.add(obs.detection_id));
@@ -44,12 +47,9 @@ export async function autoAssignObjectsProgressive(
 
   for (let index = 0; index < objectIds.length; index += 1) {
     const objectId = objectIds[index];
-    const updated = seedGrowAssign({ ...state, observationsByObjectId }, objectId, assigned, config);
-    const merged = [...(observationsByObjectId[objectId] ?? []), ...updated];
-    const deduped = new Map(merged.map((obs) => [obs.detection_id, obs]));
-
-    observationsByObjectId[objectId] = Array.from(deduped.values());
-    observationsByObjectId[objectId].forEach((obs) => assigned.add(obs.detection_id));
+    const updated = seedGrowAssign(workingState, objectId, assigned, config, context);
+    observationsByObjectId[objectId] = updated;
+    updated.forEach((obs) => assigned.add(obs.detection_id));
 
     onProgress?.({ current: index + 1, total: objectIds.length, objectId });
     await new Promise((resolve) => setTimeout(resolve, 0));
