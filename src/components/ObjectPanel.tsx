@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { AutoAssignConfig } from '../state/autoAssign';
+import { AutoAssignConfig, autoAssignObjectsProgressive } from '../state/autoAssign';
 import { selectObservationAssignments } from '../state/selectors';
 import { useStore } from '../state/store';
 
@@ -17,8 +17,35 @@ export default function ObjectPanel() {
     dispatch({ type: 'setAutoAssignConfig', payload: { [key]: value } });
   };
 
+  const runAutoAssign = async (mode: 'active' | 'all') => {
+    const baseObjectIds = mode === 'active' && state.activeObjectId ? [state.activeObjectId] : Object.keys(state.objectsById);
+    const objectIds = baseObjectIds.length ? [...baseObjectIds] : [`obj-${Object.keys(state.objectsById).length + 1}`];
+    const observationsByObjectId = { ...state.observationsByObjectId };
+
+    objectIds.forEach((id) => {
+      if (!observationsByObjectId[id]) observationsByObjectId[id] = [];
+    });
+
+    dispatch({ type: 'setAutoAssignProgress', payload: { mode, current: 0, total: objectIds.length } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    try {
+      const updatedObservations = await autoAssignObjectsProgressive(
+        { panosById: state.panosById, detectionsById: state.detectionsById, observationsByObjectId },
+        objectIds,
+        state.ui.autoAssign,
+        (progress) => dispatch({ type: 'setAutoAssignProgress', payload: { mode, ...progress } })
+      );
+
+      dispatch({ type: 'applyAutoAssign', payload: { observationsByObjectId: updatedObservations } });
+    } finally {
+      dispatch({ type: 'setAutoAssignProgress', payload: undefined });
+    }
+  };
+
   const hasDetections = Object.keys(state.detectionsById).length > 0;
-  const hasObjects = objects.length > 0;
+  const progress = state.ui.autoAssignProgress;
+  const isRunning = Boolean(progress);
 
   return (
     <div className="panel">
@@ -146,20 +173,28 @@ export default function ObjectPanel() {
         <div className="button-row" style={{ marginTop: 8 }}>
           <button
             type="button"
-            onClick={() => dispatch({ type: 'autoAssignActiveObject' })}
-            disabled={!state.activeObjectId || !hasDetections}
+            onClick={() => runAutoAssign('active')}
+            disabled={!state.activeObjectId || !hasDetections || isRunning}
           >
             Auto-assign (objet actif)
           </button>
           <button
             type="button"
             className="secondary"
-            onClick={() => dispatch({ type: 'autoAssignAllObjects' })}
-            disabled={!hasObjects || !hasDetections}
+            onClick={() => runAutoAssign('all')}
+            disabled={!hasDetections || isRunning}
           >
             Auto-assign (tous les objets)
           </button>
         </div>
+        {progress && (
+          <div className="progress-row">
+            <div className="status" style={{ margin: 0 }}>
+              Calcul {progress.mode === 'all' ? 'tous objets' : 'objet actif'} : {progress.current}/{progress.total}
+            </div>
+            <progress className="progress-bar" max={progress.total} value={progress.current} />
+          </div>
+        )}
       </div>
     </div>
   );

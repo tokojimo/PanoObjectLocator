@@ -10,7 +10,7 @@ export default function App() {
   return (
     <StoreProvider>
       <div className="app-shell">
-        <header style={{ padding: '12px 16px', background: '#0ea5e9', color: 'white' }}>
+        <header style={{ padding: '12px 16px', background: '#f97316', color: 'white' }}>
           <h1 style={{ margin: 0 }}>PanoTriangulator</h1>
           <p style={{ margin: 0, opacity: 0.9 }}>MVP frontend-only (Chrome/Edge)</p>
         </header>
